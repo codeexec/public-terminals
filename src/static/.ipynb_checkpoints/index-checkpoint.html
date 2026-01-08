@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+        }
+        .text-muted {
+            color: #a0a0a0 !important;
+        }
+        .btn-primary {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .status-pending { color: #ffc107; }
+        .status-starting { color: #17a2b8; }
+        .status-started { color: #28a745; }
+        .status-stopped { color: #6c757d; }
+        .status-failed { color: #dc3545; }
+        .status-expired { color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row mb-4 align-items-center">
+            <div class="col">
+                <h1><i class="bi bi-terminal-fill"></i> Terminal Manager</h1>
+                <small class="text-muted">Guest ID: <span id="guest-id">...</span></small>
+            </div>
+            <div class="col-auto">
+                <button id="create-btn" class="btn btn-primary btn-lg">
+                    <i class="bi bi-plus-lg"></i> New Terminal
+                </button>
+            </div>
+        </div>
+
+        <div id="alert-area"></div>
+
+        <div class="row" id="terminals-list">
+            <!-- Terminals will be loaded here -->
+            <div class="col-12 text-center text-muted">
+                <p>Loading terminals...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Utils
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function timeSince(date) {
+            var seconds = Math.floor((new Date() - new Date(date)) / 1000);
+            var interval = seconds / 31536000;
+            if (interval > 1) return Math.floor(interval) + " years ago";
+            interval = seconds / 2592000;
+            if (interval > 1) return Math.floor(interval) + " months ago";
+            interval = seconds / 86400;
+            if (interval > 1) return Math.floor(interval) + " days ago";
+            interval = seconds / 3600;
+            if (interval > 1) return Math.floor(interval) + " hours ago";
+            interval = seconds / 60;
+            if (interval > 1) return Math.floor(interval) + " minutes ago";
+            return Math.floor(seconds) + " seconds ago";
+        }
+
+        // State
+        let guestId = localStorage.getItem('guest_id');
+        if (!guestId) {
+            guestId = generateUUID();
+            localStorage.setItem('guest_id', guestId);
+        }
+        document.getElementById('guest-id').innerText = guestId;
+
+        const API_BASE = '/api/v1';
+
+        // Actions
+        async function fetchTerminals() {
+            try {
+                const response = await fetch(`${API_BASE}/terminals`, {
+                    headers: { 'X-Guest-ID': guestId }
+                });
+                const data = await response.json();
+                renderTerminals(data.terminals);
+            } catch (error) {
+                console.error('Failed to fetch terminals:', error);
+                showAlert('Failed to fetch terminals', 'danger');
+            }
+        }
+
+        async function createTerminal() {
+            const btn = document.getElementById('create-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+
+            try {
+                const response = await fetch(`${API_BASE}/terminals`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Guest-ID': guestId
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                if (response.ok) {
+                    showAlert('Terminal creation started!', 'success');
+                    fetchTerminals(); // Refresh immediately
+                } else {
+                    const err = await response.json();
+                    showAlert(`Error: ${err.detail || 'Failed to create'}`, 'danger');
+                }
+            } catch (error) {
+                console.error('Create failed:', error);
+                showAlert('Failed to create terminal', 'danger');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-plus-lg"></i> New Terminal';
+            }
+        }
+
+        async function deleteTerminal(id) {
+            if (!confirm('Are you sure you want to delete this terminal?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/terminals/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Guest-ID': guestId }
+                });
+                
+                if (response.ok) {
+                    fetchTerminals();
+                } else {
+                    showAlert('Failed to delete terminal', 'danger');
+                }
+            } catch (error) {
+                showAlert('Error deleting terminal', 'danger');
+            }
+        }
+
+        // Render
+        function renderTerminals(terminals) {
+            const list = document.getElementById('terminals-list');
+            
+            if (terminals.length === 0) {
+                list.innerHTML = `
+                    <div class="col-12 text-center text-muted py-5">
+                        <i class="bi bi-box-seam" style="font-size: 3rem;"></i>
+                        <p class="mt-3">No terminals found. Create one to get started!</p>
+                    </div>`;
+                return;
+            }
+
+            list.innerHTML = terminals.map(t => {
+                const isReady = t.status === 'started' && t.tunnel_url;
+                const statusIcon = getStatusIcon(t.status);
+                
+                let actionBtn = '';
+                if (isReady) {
+                    actionBtn = `<a href="${t.tunnel_url}" target="_blank" class="btn btn-success"><i class="bi bi-display"></i> Open Terminal</a>`;
+                } else if (t.status === 'failed') {
+                    actionBtn = `<button class="btn btn-secondary" disabled>Failed</button>`;
+                } else {
+                    actionBtn = `<button class="btn btn-outline-light" disabled><span class="spinner-border spinner-border-sm"></span> Please wait...</button>`;
+                }
+
+                return `
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <h5 class="card-title text-truncate" title="${t.id}">Terminal</h5>
+                                <span class="badge bg-secondary status-${t.status.toLowerCase()}">${t.status}</span>
+                            </div>
+                            <p class="card-text small text-muted">
+                                ID: ${t.id.substring(0, 8)}...<br>
+                                Created: ${timeSince(t.created_at)}
+                            </p>
+                            ${t.error_message ? `<div class="alert alert-danger p-2 small">${t.error_message}</div>` : ''}
+                            <div class="d-grid gap-2">
+                                ${actionBtn}
+                                <button onclick="deleteTerminal('${t.id}')" class="btn btn-outline-danger btn-sm">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function getStatusIcon(status) {
+            // Mapping could be added here
+            return status;
+        }
+
+        function showAlert(msg, type) {
+            const area = document.getElementById('alert-area');
+            area.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${msg}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            setTimeout(() => area.innerHTML = '', 5000);
+        }
+
+        // Init
+        document.getElementById('create-btn').addEventListener('click', createTerminal);
+        fetchTerminals();
+        
+        // Poll every 5 seconds
+        setInterval(fetchTerminals, 5000);
+
+    </script>
+</body>
+</html>

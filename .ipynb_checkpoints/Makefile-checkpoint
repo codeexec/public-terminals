@@ -1,0 +1,74 @@
+.PHONY: help build-terminal build-api up down logs clean test
+
+help:
+	@echo "Terminal Server - Available Commands:"
+	@echo "  make build-terminal  - Build terminal container image"
+	@echo "  make build-api       - Build API server image"
+	@echo "  make up              - Start all services"
+	@echo "  make down            - Stop all services"
+	@echo "  make logs            - View logs from all services"
+	@echo "  make clean           - Remove all containers and volumes"
+	@echo "  make test            - Run a test terminal creation"
+	@echo "  make shell           - Open shell in API container"
+
+build-terminal:
+	@echo "Building terminal container image..."
+	cd terminal-container && docker build -t terminal-server:latest .
+	@echo "Terminal container image built successfully!"
+
+build-api:
+	@echo "Building API server image..."
+	docker build -f Dockerfile.api -t terminal-api:latest .
+	@echo "API server image built successfully!"
+
+build: build-terminal build-api
+
+up:
+	@echo "Starting services..."
+	docker-compose up -d
+	@echo "Services started! API available at http://localhost:8000"
+	@echo "API docs available at http://localhost:8000/docs"
+
+down:
+	@echo "Stopping services..."
+	docker-compose down
+	@echo "Services stopped!"
+
+logs:
+	docker-compose logs -f
+
+logs-api:
+	docker-compose logs -f api
+
+logs-celery:
+	docker-compose logs -f celery-worker celery-beat
+
+clean:
+	@echo "Cleaning up..."
+	docker-compose down -v
+	@echo "Cleanup complete!"
+
+test:
+	@echo "Creating test terminal..."
+	@curl -X POST http://localhost:8000/api/v1/terminals -H "Content-Type: application/json" -d '{}' | jq
+	@echo "\nList all terminals:"
+	@curl -s http://localhost:8000/api/v1/terminals | jq
+
+shell:
+	docker-compose exec api /bin/bash
+
+db-shell:
+	docker-compose exec postgres psql -U postgres -d terminal_server
+
+init:
+	@echo "Initializing project..."
+	cp .env.example .env
+	@echo "Building images..."
+	make build
+	@echo "Starting services..."
+	make up
+	@echo "\nWaiting for services to be ready..."
+	sleep 10
+	@echo "\nInitialization complete!"
+	@echo "API available at http://localhost:8000"
+	@echo "API docs at http://localhost:8000/docs"

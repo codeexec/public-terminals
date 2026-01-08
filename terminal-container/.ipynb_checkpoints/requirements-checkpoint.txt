@@ -1,0 +1,9 @@
+# Terminal Container Dependencies
+terminado==0.18.0
+tornado==6.4
+httpx==0.26.0
+
+# Common Python utilities for users
+requests==2.31.0
+numpy==1.26.3
+pandas==2.1.4

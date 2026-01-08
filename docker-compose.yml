@@ -1,0 +1,121 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: terminal-server-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: terminal_server
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (for Celery)
+  redis:
+    image: redis:7-alpine
+    container_name: terminal-server-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Server
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: terminal-server-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
+      - REDIS_URL=redis://redis:6379/0
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - WEB_BASE_URL=http://web-server:8001
+      - TERMINAL_IMAGE=terminal-server:latest
+      - LOG_LEVEL=INFO
+      - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker-in-Docker
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn src.api_server:app --host 0.0.0.0 --port 8000 --reload
+
+  # Web Server
+  web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: terminal-server-web
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=8001
+      - API_BASE_URL=http://api-server:8000
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn src.web_server:app --host 0.0.0.0 --port 8001 --reload
+
+  # Celery Worker (for cleanup tasks)
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: terminal-server-celery
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
+      - REDIS_URL=redis://redis:6379/0
+      - TERMINAL_IMAGE=terminal-server:latest
+      - LOG_LEVEL=INFO
+      - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./src:/app/src
+    depends_on:
+      - api-server
+      - postgres
+      - redis
+    command: celery -A src.celery_app worker --loglevel=info
+
+  # Celery Beat (scheduler for periodic cleanup)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: terminal-server-celery-beat
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
+      - REDIS_URL=redis://redis:6379/0
+      - CONTAINER_PLATFORM=docker
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      - api-server
+      - postgres
+      - redis
+    command: celery -A src.celery_app beat --loglevel=info
+
+volumes:
+  postgres_data:

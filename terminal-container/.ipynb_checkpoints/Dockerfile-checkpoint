@@ -1,0 +1,35 @@
+FROM python:3.12-slim
+
+# Install system utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    vim \
+    nano \
+    dnsutils \
+    iputils-ping \
+    net-tools \
+    netcat-traditional \
+    procps \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+RUN npm install -g localtunnel @google/gemini-cli \
+    && curl -fsSL https://claude.ai/install.sh | bash
+
+# Create working directory
+WORKDIR /workspace
+
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose Terminado port
+EXPOSE 8888
+
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
