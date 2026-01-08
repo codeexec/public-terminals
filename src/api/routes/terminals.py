@@ -225,7 +225,7 @@ async def delete_terminal(
 ):
     """
     Delete a terminal instance
-    Stops the container and marks the terminal as stopped
+    Stops the container and soft-deletes the terminal record
     """
     terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
 
@@ -235,8 +235,9 @@ async def delete_terminal(
             detail=f"Terminal {terminal_id} not found",
         )
 
-    # Update status
-    terminal.status = TerminalStatus.STOPPED
+    # Soft delete: set deleted_at timestamp
+    from datetime import datetime, timezone
+    terminal.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
     # Delete container in background

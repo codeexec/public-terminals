@@ -20,9 +20,9 @@ class TerminalStatus(str, enum.Enum):
     PENDING = "pending"
     STARTING = "starting"
     STARTED = "started"
-    STOPPED = "stopped"
     EXPIRED = "expired"
     FAILED = "failed"
+    # STOPPED = "stopped"  # Not used - terminals are soft-deleted instead
 
 
 class Terminal(Base):
