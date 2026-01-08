@@ -47,9 +47,11 @@ services:
       - TERMINAL_IMAGE=terminal-server:latest
       - LOG_LEVEL=INFO
       - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
+      - USE_GVISOR=${USE_GVISOR}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # For Docker-in-Docker
       - ./src:/app/src
+      - ./terminal-container:/app/terminal-container  # For terminal files and gVisor resolv.conf
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,9 +92,11 @@ services:
       - TERMINAL_IMAGE=terminal-server:latest
       - LOG_LEVEL=INFO
       - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
+      - USE_GVISOR=${USE_GVISOR}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./src:/app/src
+      - ./terminal-container:/app/terminal-container  # For terminal files and gVisor resolv.conf
     depends_on:
       - api-server
       - postgres

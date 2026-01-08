@@ -71,3 +71,6 @@ temp/
 
 # Nginx
 nginx/certs/
+
+# Terminal container temp files
+terminal-container/tmp-resolv/

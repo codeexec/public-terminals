@@ -61,22 +61,48 @@ class DockerCLIService(ContainerServiceInterface):
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """Create a new Docker container for terminal"""
         container_name = f"terminal-{terminal_id}"
-        
+
         # Dynamically resolve IPs
         api_ip = self._get_api_server_ip()
         lt_host = urlparse(settings.LOCALTUNNEL_HOST).hostname
         lt_ip = self._get_host_ip(settings.LOCALTUNNEL_HOST)
 
+        # Create custom resolv.conf for gVisor to bypass Docker DNS (127.0.0.11)
+        # Only needed when using gVisor runtime
+        host_resolv_path = None
+        if settings.USE_GVISOR:
+            resolv_filename = f"resolv-{terminal_id}.conf"
+            container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/{resolv_filename}"
+            host_resolv_path = f"{settings.RESOLV_CONF_HOST_DIR}/{resolv_filename}"
+
+            try:
+                with open(container_resolv_path, 'w') as f:
+                    f.write("nameserver 8.8.8.8\n")
+                    f.write("nameserver 8.8.4.4\n")
+                    f.write("options ndots:0\n")
+                logger.info(f"Created custom resolv.conf for gVisor container {terminal_id}")
+            except Exception as e:
+                logger.warning(f"Failed to create custom resolv.conf: {e}")
+                host_resolv_path = None
+
         try:
             # Build docker run command with port mapping
             # -p 0:8888 maps container port 8888 to a random available host port
             # --network connects to the same network as the API container
-            # --runtime=runsc uses gVisor for enhanced isolation
             cmd = [
                 "docker",
                 "run",
                 "-d",  # Detach
-                "--runtime=runsc",  # Use gVisor for sandboxing
+            ]
+
+            # Add gVisor runtime if enabled
+            if settings.USE_GVISOR:
+                cmd.extend(["--runtime=runsc"])  # Use gVisor for sandboxing
+                logger.info(f"Using gVisor runtime for container {terminal_id}")
+            else:
+                logger.info(f"Using default runtime for container {terminal_id}")
+
+            cmd.extend([
                 "--name",
                 container_name,
                 "--network",
@@ -87,13 +113,19 @@ class DockerCLIService(ContainerServiceInterface):
                 "1",
                 "-p",
                 "0:8888",  # Map to random host port
-                "--dns",
-                "8.8.8.8",
-                "--dns",
-                "8.8.4.4",
+            ])
+
+            # Mount custom resolv.conf to bypass Docker DNS (required for gVisor)
+            if host_resolv_path:
+                cmd.extend(["-v", f"{host_resolv_path}:/etc/resolv.conf:ro"])
+            else:
+                # Fallback to --dns flags (less reliable with gVisor)
+                cmd.extend(["--dns", "8.8.8.8", "--dns", "8.8.4.4"])
+
+            cmd.extend([
                 "--add-host",
                 f"api-server:{api_ip}",
-            ]
+            ])
 
             # Add localtunnel host mapping if resolved
             if lt_host and lt_ip:
@@ -154,6 +186,26 @@ class DockerCLIService(ContainerServiceInterface):
     async def delete_terminal_container(self, container_id: str) -> bool:
         """Delete a Docker container"""
         try:
+            # Get terminal_id from container name to clean up resolv.conf (if using gVisor)
+            if settings.USE_GVISOR:
+                inspect_result = subprocess.run(
+                    ["docker", "inspect", "--format", "{{.Name}}", container_id],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if inspect_result.returncode == 0:
+                    container_name = inspect_result.stdout.strip().lstrip('/')
+                    if container_name.startswith('terminal-'):
+                        terminal_id = container_name.replace('terminal-', '')
+                        container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{terminal_id}.conf"
+                        try:
+                            if os.path.exists(container_resolv_path):
+                                os.remove(container_resolv_path)
+                                logger.info(f"Cleaned up resolv.conf for {terminal_id}")
+                        except Exception as e:
+                            logger.warning(f"Failed to cleanup resolv.conf: {e}")
+
             # Stop container
             subprocess.run(
                 ["docker", "stop", container_id], capture_output=True, timeout=15
