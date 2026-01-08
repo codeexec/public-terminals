@@ -12,5 +12,5 @@ black==23.12.1  # Code formatter
 isort==5.13.2  # Import sorting
 
 # Testing utilities for FastAPI
-httpx==0.26.0  # Already in main requirements, but needed for testing async API calls
+# Note: httpx is already included in requirements.txt
 requests==2.31.0  # For synchronous HTTP requests in tests
