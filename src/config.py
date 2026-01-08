@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Docker Configuration (if using Docker)
     DOCKER_HOST: str = ""
+    DOCKER_NETWORK: str = "public-terminals_default"
 
     # Localtunnel Configuration
     LOCALTUNNEL_HOST: str = "https://localtunnel.newsml.io"

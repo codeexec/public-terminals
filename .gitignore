@@ -68,3 +68,6 @@ temp/
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints
+
+# Nginx
+nginx/certs/

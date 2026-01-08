@@ -42,6 +42,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - API_BASE_URL=http://api-server:8000
       - WEB_BASE_URL=http://web-server:8001
       - TERMINAL_IMAGE=terminal-server:latest
       - LOG_LEVEL=INFO
@@ -68,7 +69,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
       - WEB_HOST=0.0.0.0
       - WEB_PORT=8001
-      - API_BASE_URL=http://api-server:8000
+      - API_BASE_URL=https://terminal.newsml.io
       - LOG_LEVEL=INFO
     volumes:
       - ./src:/app/src

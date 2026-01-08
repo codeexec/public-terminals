@@ -7,7 +7,7 @@ import logging
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 
 from src.config import settings
 from src.api.schemas import HealthResponse
@@ -37,7 +37,18 @@ def create_app():
     @app.get("/", tags=["root"])
     async def root():
         logger.info("Serving index.html")
-        return FileResponse("src/static/index.html")
+        # Read the index.html content
+        with open("src/static/index.html", "r") as f:
+            html_content = f.read()
+
+        # Replace the API_BASE hardcoded value with the dynamic one from settings
+        # The JavaScript in index.html will use this injected value
+        api_base_script = f"        const API_BASE = '{settings.API_BASE_URL}/api/v1';"
+        modified_html_content = html_content.replace(
+            "        const API_BASE = 'http://localhost:8000/api/v1';", # Old hardcoded line
+            api_base_script
+        )
+        return HTMLResponse(content=modified_html_content) # Return HTMLResponse
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health_check():

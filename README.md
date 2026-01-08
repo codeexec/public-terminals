@@ -675,28 +675,12 @@ docker compose exec postgres psql -U postgres -d terminal_server
 - Resize browser window to trigger re-fit
 - Check browser console for errors
 
-## Recent Updates
+### Troubleshooting
 
-### Version 2.0 - Architecture Separation
-- ✅ Separated Web UI and API into independent servers
-- ✅ Added comprehensive Web UI for terminal management
-- ✅ Improved terminal sizing with xterm.js FitAddon
-- ✅ Added tmux pre-installed in terminals
-- ✅ Organized project with scripts/ and tests/ folders
-- ✅ Enhanced Makefile with new commands
-- ✅ Fixed double scroll bar issue in terminal UI
-
-## Future Enhancements
-
-- [ ] User authentication and multi-tenancy
-- [ ] Terminal session recording
-- [ ] Custom terminal environments (different base images)
-- [ ] Horizontal autoscaling based on demand
-- [ ] Metrics and monitoring (Prometheus/Grafana)
-- [ ] WebSocket status updates instead of polling
-- [ ] Self-hosted localtunnel server deployment
-- [ ] Terminal sharing/collaboration features
-- [ ] File upload/download in terminals
+Stop all containers
+```
+sudo docker ps -a --filter "name=terminal-" -q | xargs -r sudo docker rm -f
+```
 
 ## License
 

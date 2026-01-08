@@ -45,7 +45,7 @@ class DockerCLIService(ContainerServiceInterface):
                 "--name",
                 container_name,
                 "--network",
-                "terminals_default",  # Use same network as API
+                settings.DOCKER_NETWORK,  # Use same network as API
                 "--memory",
                 "1g",
                 "--cpus",
