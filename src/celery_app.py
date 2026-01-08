@@ -32,3 +32,6 @@ celery_app.conf.beat_schedule = {
 
 # Auto-discover tasks
 celery_app.autodiscover_tasks(["src.services"])
+
+# Explicitly import tasks to ensure they are registered
+import src.services.cleanup_service

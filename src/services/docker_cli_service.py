@@ -5,7 +5,10 @@ This bypasses the urllib3 compatibility issues
 
 import logging
 import subprocess
+import socket
+import os
 from typing import Dict, Optional
+from urllib.parse import urlparse
 
 from src.config import settings
 from src.services.interfaces import ContainerServiceInterface
@@ -30,9 +33,39 @@ class DockerCLIService(ContainerServiceInterface):
             logger.error(f"Failed to initialize Docker CLI service: {e}")
             raise
 
+    def _get_api_server_ip(self) -> str:
+        """Get the internal IP of the api-server container"""
+        try:
+            # Try to get it from the container name used in docker-compose
+            cmd = ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", "terminal-server-api"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            
+            # Fallback: try to resolve it via DNS (if it works on host)
+            return socket.gethostbyname("api-server")
+        except Exception as e:
+            logger.warning(f"Could not dynamically resolve api-server IP: {e}")
+            return "172.18.0.5"  # Last resort fallback
+
+    def _get_host_ip(self, url: str) -> Optional[str]:
+        """Resolve a URL's hostname to an IP address"""
+        try:
+            hostname = urlparse(url).hostname
+            if hostname:
+                return socket.gethostbyname(hostname)
+        except Exception as e:
+            logger.warning(f"Could not resolve IP for {url}: {e}")
+        return None
+
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """Create a new Docker container for terminal"""
         container_name = f"terminal-{terminal_id}"
+        
+        # Dynamically resolve IPs
+        api_ip = self._get_api_server_ip()
+        lt_host = urlparse(settings.LOCALTUNNEL_HOST).hostname
+        lt_ip = self._get_host_ip(settings.LOCALTUNNEL_HOST)
 
         try:
             # Build docker run command with port mapping
@@ -54,6 +87,19 @@ class DockerCLIService(ContainerServiceInterface):
                 "1",
                 "-p",
                 "0:8888",  # Map to random host port
+                "--dns",
+                "8.8.8.8",
+                "--dns",
+                "8.8.4.4",
+                "--add-host",
+                f"api-server:{api_ip}",
+            ]
+
+            # Add localtunnel host mapping if resolved
+            if lt_host and lt_ip:
+                cmd.extend(["--add-host", f"{lt_host}:{lt_ip}"])
+
+            cmd.extend([
                 "-e",
                 f"TERMINAL_ID={terminal_id}",
                 "-e",
@@ -65,7 +111,7 @@ class DockerCLIService(ContainerServiceInterface):
                 "--label",
                 f"terminal_id={terminal_id}",
                 settings.TERMINAL_IMAGE,
-            ]
+            ])
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 

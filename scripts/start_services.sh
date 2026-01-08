@@ -33,28 +33,37 @@ fi
 echo -e "${YELLOW}Starting services via Docker Compose...${NC}"
 sudo docker compose up -d
 
-# 4. Wait for Health
+# 4. Wait and Verify Health (with potential restart for transient DNS issues)
 echo -e "${YELLOW}Waiting for services to be healthy...${NC}"
 
-# Wait for API
-for i in {1..30}; do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-        echo -e "  API Server: ${GREEN}ready ✓${NC}"
-        break
-    fi
-    [ $i -eq 30 ] && echo -e "  API Server: ${RED}failed ✗${NC}" && exit 1
-    sleep 1
-done
+# Helper to check and restart if needed
+check_service() {
+    local name=$1
+    local port=$2
+    local label=$3
+    
+    for i in {1..20}; do
+        if curl -s "http://localhost:${port}/health" > /dev/null 2>&1; then
+            echo -e "  ${label}: ${GREEN}ready ✓${NC}"
+            return 0
+        fi
+        
+        # After 5 attempts, if it's still failing, try restarting it 
+        # (fixes transient DNS resolution issues in some Docker environments)
+        if [ $i -eq 5 ]; then
+            echo -e "  ${YELLOW}Restarting ${name} (possible transient startup error)...${NC}"
+            sudo docker restart "${name}" > /dev/null
+        fi
+        
+        sleep 2
+    done
+    
+    echo -e "  ${label}: ${RED}failed ✗${NC}"
+    return 1
+}
 
-# Wait for Web
-for i in {1..10}; do
-    if curl -s http://localhost:8001/health > /dev/null 2>&1; then
-        echo -e "  Web Server: ${GREEN}ready ✓${NC}"
-        break
-    fi
-    [ $i -eq 10 ] && echo -e "  Web Server: ${RED}failed ✗${NC}" && exit 1
-    sleep 1
-done
+check_service "terminal-server-api" "8000" "API Server" || exit 1
+check_service "terminal-server-web" "8001" "Web Server" || exit 1
 
 echo -e "${GREEN}=========================================${NC}"
 echo -e "${GREEN}         SERVICES ARE RUNNING            ${NC}"
