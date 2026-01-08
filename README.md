@@ -2,30 +2,51 @@
 
 A cloud-based terminal provisioning system that provides on-demand terminal access via web browsers using Terminado and localtunnel.
 
-## Architecture
-
-The system consists of four main components:
-
-1. **API Server** - FastAPI-based REST API for terminal management
-2. **Database** - PostgreSQL for storing terminal metadata
-3. **Terminal Container** - Docker/Kubernetes containers running Terminado + localtunnel
-4. **Cleanup Service** - Celery-based background tasks for TTL enforcement
-
 ## Features
 
-- **On-demand terminal creation** - Create isolated terminal instances via API
+- **Web UI** - User-friendly web interface for terminal management
+- **REST API** - Full-featured API for terminal lifecycle management
+- **On-demand terminal creation** - Create isolated terminal instances instantly
 - **Web-based access** - Access terminals through browser via tunnel URLs
 - **24-hour TTL** - Automatic cleanup after expiration
 - **Multi-platform support** - Docker or Kubernetes (GKE)
 - **Status tracking** - Real-time status updates via callbacks
 - **Health monitoring** - Container health checks and error reporting
+- **Pre-installed tools** - Includes tmux, git, vim, nano, and development tools
+
+## Architecture
+
+The system consists of six main components:
+
+1. **Web Server** (Port 8001) - Serves the web UI for terminal management
+2. **API Server** (Port 8000) - FastAPI-based REST API for terminal operations
+3. **Database** - PostgreSQL for storing terminal metadata
+4. **Terminal Containers** - Docker/Kubernetes containers running Terminado + localtunnel
+5. **Cleanup Service** - Celery-based background tasks for TTL enforcement
+6. **Message Queue** - Redis for Celery task management
+
+### Separated Architecture
+
+```
+┌─────────────┐         ┌─────────────┐
+│  Web UI     │         │  API Server │
+│  :8001      │ ──────► │  :8000      │
+└─────────────┘  CORS   └─────────────┘
+                              │
+                              ├── PostgreSQL
+                              ├── Redis
+                              ├── Container Service
+                              └── Celery Workers
+```
 
 ## Project Structure
 
 ```
 terminal-server/
 ├── src/
-│   ├── main.py                      # FastAPI application
+│   ├── api_server.py                # API Server entry point (port 8000)
+│   ├── web_server.py                # Web Server entry point (port 8001)
+│   ├── main.py                      # Legacy monolithic app (deprecated)
 │   ├── config.py                    # Configuration management
 │   ├── celery_app.py                # Celery configuration
 │   ├── database/
@@ -36,16 +57,30 @@ terminal-server/
 │   │   └── routes/
 │   │       ├── terminals.py         # Terminal CRUD endpoints
 │   │       └── callbacks.py         # Container callback endpoints
-│   └── services/
-│       ├── container_service.py     # Docker/K8s management
-│       └── cleanup_service.py       # TTL cleanup service
+│   ├── services/
+│   │   ├── container_service.py     # Docker/K8s management
+│   │   ├── cleanup_service.py       # TTL cleanup service
+│   │   └── docker_cli_service.py    # Docker CLI wrapper
+│   └── static/
+│       └── index.html               # Web UI
 ├── terminal-container/
 │   ├── Dockerfile                   # Terminal container image
+│   ├── terminado_server.py          # Tornado-based terminal server
+│   ├── index.html                   # Terminal web interface
 │   ├── entrypoint.sh                # Container startup script
+│   ├── motd.sh                      # Message of the day
 │   └── requirements.txt             # Terminal dependencies
-├── docker compose.yml               # Local development setup
-├── Dockerfile.api                   # API server image
-└── requirements.txt                 # API server dependencies
+├── scripts/
+│   ├── run_test.sh                  # Full integration test
+│   └── setup.sh                     # Project setup script
+├── tests/
+│   ├── test_api.py                  # API integration tests
+│   └── __init__.py                  # Test package marker
+├── docker-compose.yml               # Local development setup
+├── Dockerfile                       # API/Web server image
+├── Makefile                         # Common commands
+├── pytest.ini                       # Pytest configuration
+└── requirements.txt                 # Python dependencies
 ```
 
 ## Quick Start
@@ -56,28 +91,54 @@ terminal-server/
 - Python 3.11+
 - curl and jq (for testing)
 
-### Option 1: Automated Full Test (Recommended)
+### Option 1: Using Makefile (Recommended)
+
+```bash
+# Initialize project (first time only)
+make init
+
+# Start all services
+make up
+
+# Access the application
+# - Web UI: http://localhost:8001
+# - API: http://localhost:8000
+# - API Docs: http://localhost:8000/docs
+
+# View logs
+make logs          # All services
+make logs-api      # API server only
+make logs-web      # Web server only
+
+# Run tests
+make test          # Quick API test
+make test-full     # Full integration test
+make test-api      # Python API tests
+
+# Stop services
+make down
+```
+
+### Option 2: Automated Full Test
 
 Run the unified test script that will:
-1. Start all services (API, DB, Redis, Celery)
+1. Start all services (API, Web, DB, Redis, Celery)
 2. Build the terminal container image
 3. Create a test terminal
 4. Verify health endpoints
-5. Display tunnel URL for browser access
-6. Optionally stop and cleanup
+5. Display access URLs
+6. Optionally cleanup
 
 ```bash
-./run_test.sh
+./scripts/run_test.sh
 ```
 
-This script handles everything automatically and provides a complete end-to-end test.
-
-To stop and clean up all services and terminal containers:
+To stop and clean up all services:
 ```bash
-./run_test.sh --stop
+./scripts/run_test.sh --stop
 ```
 
-### Option 2: Manual Setup
+### Option 3: Manual Setup
 
 #### 1. Setup Environment
 
@@ -96,11 +157,6 @@ cd ..
 #### 3. Start Services
 
 ```bash
-./start.sh
-```
-
-Or manually:
-```bash
 docker compose up -d
 ```
 
@@ -108,29 +164,36 @@ This starts:
 - PostgreSQL (port 5432)
 - Redis (port 6379)
 - API Server (port 8000)
+- Web Server (port 8001)
 - Celery Worker
 - Celery Beat (scheduler)
 
-#### 4. Verify Services
+#### 4. Access the Application
 
-```bash
-# Check API health
-curl http://localhost:8000/health
+**Web UI:**
+```
+http://localhost:8001
+```
 
-# View API docs
-open http://localhost:8000/docs
+**API Documentation:**
+```
+http://localhost:8000/docs
 ```
 
 #### 5. Stop Services
 
 ```bash
-./stop.sh
-```
-
-Or manually:
-```bash
 docker compose down
 ```
+
+## Web UI Usage
+
+1. **Open Web UI** at `http://localhost:8001`
+2. **Create Terminal** - Click "New Terminal" button
+3. **Wait for Terminal** - Status will change from "pending" → "starting" → "started"
+4. **Open Terminal** - Click "Open Terminal" button when ready
+5. **Use Terminal** - Full bash terminal with tmux, git, vim, nano, and more
+6. **Delete Terminal** - Click "Delete" button when done
 
 ## API Usage
 
@@ -140,18 +203,27 @@ docker compose down
 POST /api/v1/terminals
 ```
 
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/v1/terminals \
+  -H "Content-Type: application/json" \
+  -H "X-Guest-ID: user-123" \
+  -d '{}'
+```
+
 **Response (202 Accepted):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "status": "pending",
   "tunnel_url": null,
-  "created_at": "2026-01-07T10:00:00Z",
-  "expires_at": "2026-01-08T10:00:00Z"
+  "container_id": null,
+  "created_at": "2026-01-08T10:00:00Z",
+  "expires_at": "2026-01-09T10:00:00Z"
 }
 ```
 
-### Poll Terminal Status
+### Get Terminal Details
 
 ```bash
 GET /api/v1/terminals/{terminal_id}
@@ -163,9 +235,11 @@ GET /api/v1/terminals/{terminal_id}
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "status": "started",
   "tunnel_url": "https://abc123.loca.lt",
-  "container_id": "container-550e8400",
-  "created_at": "2026-01-07T10:00:00Z",
-  "expires_at": "2026-01-08T10:00:00Z"
+  "container_id": "terminal-550e8400",
+  "container_name": "terminal-550e8400",
+  "host_port": "32768",
+  "created_at": "2026-01-08T10:00:00Z",
+  "expires_at": "2026-01-09T10:00:00Z"
 }
 ```
 
@@ -175,10 +249,40 @@ GET /api/v1/terminals/{terminal_id}
 GET /api/v1/terminals
 ```
 
+Optional query parameters:
+- `skip` - Pagination offset (default: 0)
+- `limit` - Number of results (default: 100)
+
+Optional headers:
+- `X-Guest-ID` - Filter by guest/user ID
+
 ### Delete a Terminal
 
 ```bash
 DELETE /api/v1/terminals/{terminal_id}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "terminal_id": "550e8400-e29b-41d4-a716-446655440000",
+  "message": "Terminal deleted successfully"
+}
+```
+
+### Health Check
+
+```bash
+GET /health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0"
+}
 ```
 
 ## Terminal Lifecycle
@@ -189,7 +293,7 @@ DELETE /api/v1/terminals/{terminal_id}
 4. **Tunnel established** → Container calls back with URL (status: `started`)
 5. **User accesses terminal** → Opens tunnel URL in browser
 6. **24 hours later** → Cleanup service expires terminal
-7. **Container deleted** → Resources cleaned up (status: `expired`)
+7. **Container deleted** → Resources cleaned up (status: `stopped`)
 
 ## Container Callback Flow
 
@@ -199,6 +303,10 @@ The terminal container reports back to the API server:
 
 ```bash
 POST /api/v1/callbacks/tunnel
+```
+
+**Request:**
+```json
 {
   "terminal_id": "550e8400-e29b-41d4-a716-446655440000",
   "tunnel_url": "https://abc123.loca.lt"
@@ -209,10 +317,27 @@ POST /api/v1/callbacks/tunnel
 
 ```bash
 POST /api/v1/callbacks/status
+```
+
+**Request:**
+```json
 {
   "terminal_id": "550e8400-e29b-41d4-a716-446655440000",
   "status": "failed",
   "error_message": "Failed to start localtunnel"
+}
+```
+
+### 3. Health Ping
+
+```bash
+POST /api/v1/callbacks/health
+```
+
+**Request:**
+```json
+{
+  "terminal_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -224,10 +349,32 @@ See `.env.example` for all available configuration options.
 
 **Key settings:**
 
+**API Server:**
+- `API_HOST` - API server host (default: 0.0.0.0)
+- `API_PORT` - API server port (default: 8000)
+- `API_BASE_URL` - API server URL (default: http://localhost:8000)
+
+**Web Server:**
+- `WEB_HOST` - Web server host (default: 0.0.0.0)
+- `WEB_PORT` - Web server port (default: 8001)
+- `WEB_BASE_URL` - Web server URL (default: http://localhost:8001)
+
+**Container Platform:**
 - `CONTAINER_PLATFORM` - `docker` or `kubernetes`
+- `TERMINAL_IMAGE` - Terminal container image (default: terminal-server:latest)
 - `TERMINAL_TTL_HOURS` - Terminal lifetime (default: 24)
+
+**Cleanup:**
 - `CLEANUP_INTERVAL_MINUTES` - How often to run cleanup (default: 5)
-- `LOCALTUNNEL_HOST` - Localtunnel server URL
+
+**Localtunnel:**
+- `LOCALTUNNEL_HOST` - Localtunnel server URL (default: https://localtunnel.newsml.io)
+
+**Database:**
+- `DATABASE_URL` - PostgreSQL connection string
+
+**Redis:**
+- `REDIS_URL` - Redis connection string for Celery
 
 ### Docker vs Kubernetes
 
@@ -244,6 +391,179 @@ K8S_NAMESPACE=default
 K8S_IN_CLUSTER=true
 ```
 
+## Pre-installed Tools in Terminals
+
+Each terminal container comes with:
+
+**Shell & Multiplexing:**
+- bash
+- tmux (terminal multiplexer)
+
+**Editors:**
+- vim
+- nano
+
+**Version Control:**
+- git
+
+**Network Tools:**
+- curl
+- dnsutils (dig, nslookup)
+- iputils-ping
+- net-tools (netstat, ifconfig)
+- netcat
+
+**System Tools:**
+- procps (ps, top)
+- htop
+
+**Development:**
+- Python 3.12
+- Node.js & npm
+- Claude CLI
+- Gemini CLI
+- localtunnel
+
+## Makefile Commands
+
+```bash
+make help              # Show all available commands
+
+# Build & Deploy
+make build-terminal    # Build terminal container image
+make build-api         # Build API server image
+make build             # Build all images
+make up                # Start all services
+make down              # Stop all services
+make init              # Initialize project (first time setup)
+make setup             # Run setup script
+
+# Logs & Monitoring
+make logs              # View all logs
+make logs-api          # View API server logs
+make logs-web          # View Web server logs
+make logs-celery       # View Celery worker logs
+
+# Testing
+make test              # Quick API test (create terminal)
+make test-full         # Full integration test (bash script)
+make test-api          # Run Python API tests
+
+# Utilities
+make shell             # Open shell in API container
+make db-shell          # Open PostgreSQL shell
+make clean             # Remove all containers and volumes
+```
+
+## Development
+
+### Run API Server Locally
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start PostgreSQL and Redis
+docker compose up -d postgres redis
+
+# Run API server
+python -m src.api_server
+```
+
+### Run Web Server Locally
+
+```bash
+# Run web server
+python -m src.web_server
+```
+
+### Run Celery Worker Locally
+
+```bash
+celery -A src.celery_app worker --loglevel=info
+```
+
+### Run Celery Beat Locally
+
+```bash
+celery -A src.celery_app beat --loglevel=info
+```
+
+## Testing
+
+### Quick API Test
+
+```bash
+make test
+```
+
+### Full Integration Test
+
+```bash
+make test-full
+# or
+./scripts/run_test.sh
+```
+
+### Python API Tests
+
+```bash
+make test-api
+# or
+python3 tests/test_api.py
+# or
+pytest tests/
+```
+
+### Manual API Testing
+
+```bash
+# Create terminal
+TERMINAL_ID=$(curl -X POST http://localhost:8000/api/v1/terminals \
+  -H "Content-Type: application/json" \
+  -H "X-Guest-ID: test-user" \
+  -d '{}' | jq -r '.id')
+
+# Poll status
+curl http://localhost:8000/api/v1/terminals/$TERMINAL_ID | jq
+
+# Wait for tunnel URL
+while true; do
+  STATUS=$(curl -s http://localhost:8000/api/v1/terminals/$TERMINAL_ID | jq -r '.status')
+  if [ "$STATUS" = "started" ]; then
+    TUNNEL_URL=$(curl -s http://localhost:8000/api/v1/terminals/$TERMINAL_ID | jq -r '.tunnel_url')
+    echo "Terminal ready: $TUNNEL_URL"
+    break
+  fi
+  echo "Status: $STATUS"
+  sleep 2
+done
+
+# Delete terminal
+curl -X DELETE http://localhost:8000/api/v1/terminals/$TERMINAL_ID
+```
+
+## Database Schema
+
+### `terminals` table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | VARCHAR(36) | Primary key (UUID) |
+| user_id | VARCHAR(255) | User/Guest identifier |
+| status | ENUM | Terminal status |
+| tunnel_url | VARCHAR(512) | Public tunnel URL |
+| container_id | VARCHAR(255) | Container/pod identifier |
+| container_name | VARCHAR(255) | Container name |
+| host_port | VARCHAR(10) | Host port mapping |
+| created_at | TIMESTAMP | Creation time |
+| updated_at | TIMESTAMP | Last update time |
+| expires_at | TIMESTAMP | Expiration time (created_at + TTL) |
+| deleted_at | TIMESTAMP | Deletion time (soft delete) |
+| error_message | VARCHAR(1024) | Error details if failed |
+
+**Status values:** `pending`, `starting`, `started`, `stopped`, `expired`, `failed`
+
 ## Deployment to GCP
 
 ### Option 1: GKE (Recommended)
@@ -258,11 +578,11 @@ gcloud container clusters create terminal-server \
 
 2. **Build and push images:**
 ```bash
-# Build API image
-docker build -f Dockerfile.api -t gcr.io/[PROJECT-ID]/terminal-api:latest .
-docker push gcr.io/[PROJECT-ID]/terminal-api:latest
+# Build and push API/Web server image
+docker build -t gcr.io/[PROJECT-ID]/terminal-app:latest .
+docker push gcr.io/[PROJECT-ID]/terminal-app:latest
 
-# Build terminal container image
+# Build and push terminal container image
 cd terminal-container
 docker build -t gcr.io/[PROJECT-ID]/terminal-server:latest .
 docker push gcr.io/[PROJECT-ID]/terminal-server:latest
@@ -275,98 +595,37 @@ kubectl apply -f k8s/
 
 ### Option 2: Cloud Run + GCE
 
-1. Deploy API to Cloud Run
+1. Deploy API and Web servers to Cloud Run
 2. Use GCE VMs with Docker for terminal containers
 3. Configure VPC networking
 
-## Database Schema
-
-### `terminals` table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | VARCHAR(36) | Primary key (UUID) |
-| status | ENUM | Terminal status |
-| tunnel_url | VARCHAR(512) | Public tunnel URL |
-| container_id | VARCHAR(255) | Container/pod identifier |
-| container_name | VARCHAR(255) | Container name |
-| created_at | TIMESTAMP | Creation time |
-| updated_at | TIMESTAMP | Last update time |
-| expires_at | TIMESTAMP | Expiration time (created_at + TTL) |
-| deleted_at | TIMESTAMP | Deletion time |
-| error_message | VARCHAR(1024) | Error details if failed |
-
-**Status values:** `pending`, `starting`, `started`, `stopped`, `expired`, `failed`
-
 ## Monitoring and Logs
 
-### View API logs
+### View API Server Logs
 ```bash
-docker compose logs -f api
+docker compose logs -f api-server
 ```
 
-### View Celery worker logs
+### View Web Server Logs
+```bash
+docker compose logs -f web-server
+```
+
+### View Celery Worker Logs
 ```bash
 docker compose logs -f celery-worker
 ```
 
-### View terminal container logs
+### View Terminal Container Logs
 ```bash
 docker logs terminal-{terminal_id}
 ```
 
-## Development
-
-### Run API server locally
-
+### Access PostgreSQL
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start PostgreSQL and Redis
-docker compose up -d postgres redis
-
-# Run API server
-cd src
-python -m uvicorn main:app --reload --port 8000
-```
-
-### Run Celery worker locally
-
-```bash
-celery -A src.celery_app worker --loglevel=info
-```
-
-### Run Celery beat locally
-
-```bash
-celery -A src.celery_app beat --loglevel=info
-```
-
-## Testing
-
-### Manual API Testing
-
-```bash
-# Create terminal
-TERMINAL_ID=$(curl -X POST http://localhost:8000/api/v1/terminals | jq -r '.id')
-
-# Poll status
-curl http://localhost:8000/api/v1/terminals/$TERMINAL_ID
-
-# Wait for tunnel URL
-while true; do
-  STATUS=$(curl -s http://localhost:8000/api/v1/terminals/$TERMINAL_ID | jq -r '.status')
-  if [ "$STATUS" = "started" ]; then
-    TUNNEL_URL=$(curl -s http://localhost:8000/api/v1/terminals/$TERMINAL_ID | jq -r '.tunnel_url')
-    echo "Terminal ready: $TUNNEL_URL"
-    break
-  fi
-  sleep 2
-done
-
-# Delete terminal
-curl -X DELETE http://localhost:8000/api/v1/terminals/$TERMINAL_ID
+make db-shell
+# or
+docker compose exec postgres psql -U postgres -d terminal_server
 ```
 
 ## Security Considerations
@@ -374,33 +633,60 @@ curl -X DELETE http://localhost:8000/api/v1/terminals/$TERMINAL_ID
 1. **Network isolation** - Terminals run in isolated containers
 2. **TTL enforcement** - Automatic cleanup prevents resource exhaustion
 3. **No persistent storage** - Terminals are ephemeral
-4. **CORS configuration** - Restrict allowed origins in production
-5. **API authentication** - Add JWT/OAuth before production deployment
-6. **Tunnel security** - Consider self-hosted localtunnel server
+4. **CORS configuration** - Configure allowed origins in production
+5. **Guest ID tracking** - Basic user tracking via X-Guest-ID header
+6. **API authentication** - Add JWT/OAuth before production deployment
+7. **Tunnel security** - Consider self-hosted localtunnel server
+8. **Resource limits** - Set container CPU/memory limits
 
 ## Troubleshooting
 
 ### Terminal stuck in "pending" or "starting"
 
-- Check API server logs: `docker compose logs api`
+- Check API server logs: `make logs-api`
 - Check container logs: `docker logs terminal-{id}`
 - Verify Docker socket access: `ls -la /var/run/docker.sock`
+- Check container service: `docker ps -a | grep terminal`
 
 ### Tunnel URL not appearing
 
 - Check entrypoint.sh execution: `docker logs terminal-{id}`
-- Verify localtunnel connectivity
+- Verify localtunnel connectivity: `curl https://localtunnel.newsml.io`
 - Check callback endpoint: `curl http://localhost:8000/api/v1/callbacks/tunnel`
+- Verify API server is accessible from containers
+
+### Web UI not loading
+
+- Check web server logs: `make logs-web`
+- Verify web server is running: `curl http://localhost:8001/health`
+- Check browser console for CORS errors
+- Verify API_BASE in index.html points to correct API server
 
 ### Cleanup not running
 
 - Check Celery beat is running: `docker compose ps celery-beat`
-- Check Celery worker logs: `docker compose logs celery-worker`
-- Verify Redis connectivity
+- Check Celery worker logs: `make logs-celery`
+- Verify Redis connectivity: `docker compose exec redis redis-cli ping`
+
+### Terminal resolution issues
+
+- The terminal uses xterm.js FitAddon for automatic sizing
+- Resize browser window to trigger re-fit
+- Check browser console for errors
+
+## Recent Updates
+
+### Version 2.0 - Architecture Separation
+- ✅ Separated Web UI and API into independent servers
+- ✅ Added comprehensive Web UI for terminal management
+- ✅ Improved terminal sizing with xterm.js FitAddon
+- ✅ Added tmux pre-installed in terminals
+- ✅ Organized project with scripts/ and tests/ folders
+- ✅ Enhanced Makefile with new commands
+- ✅ Fixed double scroll bar issue in terminal UI
 
 ## Future Enhancements
 
-- [ ] Web UI for terminal management
 - [ ] User authentication and multi-tenancy
 - [ ] Terminal session recording
 - [ ] Custom terminal environments (different base images)
@@ -408,6 +694,8 @@ curl -X DELETE http://localhost:8000/api/v1/terminals/$TERMINAL_ID
 - [ ] Metrics and monitoring (Prometheus/Grafana)
 - [ ] WebSocket status updates instead of polling
 - [ ] Self-hosted localtunnel server deployment
+- [ ] Terminal sharing/collaboration features
+- [ ] File upload/download in terminals
 
 ## License
 
