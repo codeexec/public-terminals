@@ -87,7 +87,10 @@
         }
         document.getElementById('guest-id').innerText = guestId;
 
-        const API_BASE = 'http://localhost:8000/api/v1';
+        // Automatically determine API base URL based on current host
+        const API_BASE = window.location.origin.includes('8001') 
+            ? 'http://localhost:8000/api/v1' 
+            : window.location.origin + '/api/v1';
 
         // Actions
         async function fetchTerminals() {
