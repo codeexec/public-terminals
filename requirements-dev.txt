@@ -1,0 +1,16 @@
+# Development and Testing Dependencies
+
+# Testing Framework
+pytest==7.4.3
+pytest-asyncio==0.23.2  # For testing async functions
+pytest-cov==4.1.0  # For code coverage reports
+pytest-mock==3.12.0  # For mocking in tests
+
+# Linting and Code Quality
+flake8==7.0.0
+black==23.12.1  # Code formatter
+isort==5.13.2  # Import sorting
+
+# Testing utilities for FastAPI
+# Note: httpx is already included in requirements.txt
+requests==2.31.0  # For synchronous HTTP requests in tests
