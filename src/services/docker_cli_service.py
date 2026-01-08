@@ -38,10 +38,12 @@ class DockerCLIService(ContainerServiceInterface):
             # Build docker run command with port mapping
             # -p 0:8888 maps container port 8888 to a random available host port
             # --network connects to the same network as the API container
+            # --runtime=runsc uses gVisor for enhanced isolation
             cmd = [
                 "docker",
                 "run",
                 "-d",  # Detach
+                "--runtime=runsc",  # Use gVisor for sandboxing
                 "--name",
                 container_name,
                 "--network",
