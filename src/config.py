@@ -1,6 +1,7 @@
 """
 Configuration management for Terminal Server
 """
+
 from pydantic_settings import BaseSettings
 from typing import Literal
 

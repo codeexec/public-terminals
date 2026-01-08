@@ -2,12 +2,12 @@
 Terminal API Routes
 Main endpoints for terminal CRUD operations
 """
+
 import logging
 import asyncio
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Header
 from sqlalchemy.orm import Session
-from typing import List
 
 from src.database.session import get_db
 from src.database.models import Terminal, TerminalStatus
@@ -15,7 +15,7 @@ from src.api.schemas import (
     TerminalCreate,
     TerminalResponse,
     TerminalListResponse,
-    OperationResponse
+    OperationResponse,
 )
 from src.services.container_service import get_container_service
 from src.config import settings
@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/terminals", tags=["terminals"])
 
 
-async def _poll_container_status(terminal_id: str, container_name: str, db: Session, max_attempts: int = 60):
+async def _poll_container_status(
+    terminal_id: str, container_name: str, db: Session, max_attempts: int = 60
+):
     """
     Poll the container's HTTP status endpoint to get tunnel URL
     Polls every 2 seconds for up to 2 minutes
@@ -35,7 +37,9 @@ async def _poll_container_status(terminal_id: str, container_name: str, db: Sess
     async with httpx.AsyncClient(timeout=5.0) as client:
         for attempt in range(max_attempts):
             try:
-                logger.info(f"Polling container status for terminal {terminal_id} (attempt {attempt + 1}/{max_attempts})")
+                logger.info(
+                    f"Polling container status for terminal {terminal_id} (attempt {attempt + 1}/{max_attempts})"
+                )
                 response = await client.get(status_url)
 
                 if response.status_code == 200:
@@ -45,24 +49,36 @@ async def _poll_container_status(terminal_id: str, container_name: str, db: Sess
 
                     if tunnel_url and container_status == "ready":
                         # Update terminal with tunnel URL
-                        terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
+                        terminal = (
+                            db.query(Terminal)
+                            .filter(Terminal.id == terminal_id)
+                            .first()
+                        )
                         if terminal:
                             terminal.tunnel_url = tunnel_url
                             terminal.status = TerminalStatus.STARTED
                             db.commit()
-                            logger.info(f"Terminal {terminal_id} ready with tunnel URL: {tunnel_url}")
+                            logger.info(
+                                f"Terminal {terminal_id} ready with tunnel URL: {tunnel_url}"
+                            )
                             return True
                     else:
-                        logger.debug(f"Container not ready yet: status={container_status}, tunnel_url={tunnel_url}")
+                        logger.debug(
+                            f"Container not ready yet: status={container_status}, tunnel_url={tunnel_url}"
+                        )
 
             except Exception as e:
-                logger.debug(f"Failed to poll container status (attempt {attempt + 1}): {e}")
+                logger.debug(
+                    f"Failed to poll container status (attempt {attempt + 1}): {e}"
+                )
 
             # Wait before next attempt
             await asyncio.sleep(2)
 
     # Failed to get tunnel URL within timeout
-    logger.error(f"Failed to get tunnel URL for terminal {terminal_id} after {max_attempts} attempts")
+    logger.error(
+        f"Failed to get tunnel URL for terminal {terminal_id} after {max_attempts} attempts"
+    )
     return False
 
 
@@ -94,7 +110,9 @@ async def _create_terminal_background(terminal_id: str, db: Session):
         terminal.host_port = result.get("host_port")
         db.commit()
 
-        logger.info(f"Container created for terminal {terminal_id}: {result['container_id']}, host_port: {terminal.host_port}")
+        logger.info(
+            f"Container created for terminal {terminal_id}: {result['container_id']}, host_port: {terminal.host_port}"
+        )
 
         # Poll container status endpoint to get tunnel URL
         success = await _poll_container_status(terminal_id, terminal.container_name, db)
@@ -122,7 +140,7 @@ async def create_terminal(
     terminal_create: TerminalCreate,
     background_tasks: BackgroundTasks,
     x_guest_id: str = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Create a new terminal instance
@@ -157,7 +175,7 @@ async def get_terminal(terminal_id: str, db: Session = Depends(get_db)):
     if not terminal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {terminal_id} not found"
+            detail=f"Terminal {terminal_id} not found",
         )
 
     return terminal
@@ -167,9 +185,9 @@ async def get_terminal(terminal_id: str, db: Session = Depends(get_db)):
 async def list_terminals(
     skip: int = 0,
     limit: int = 100,
-    status_filter: TerminalStatus = None,
+    status_filter: TerminalStatus | None = None,
     x_guest_id: str = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     List all terminals with optional filtering
@@ -197,16 +215,13 @@ async def list_terminals(
     terminals = query.offset(skip).limit(limit).all()
 
     return TerminalListResponse(
-        terminals=terminals,
-        total=total
+        terminals=[TerminalResponse.model_validate(t) for t in terminals], total=total
     )
 
 
 @router.delete("/{terminal_id}", status_code=status.HTTP_200_OK)
 async def delete_terminal(
-    terminal_id: str,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    terminal_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """
     Delete a terminal instance
@@ -217,7 +232,7 @@ async def delete_terminal(
     if not terminal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {terminal_id} not found"
+            detail=f"Terminal {terminal_id} not found",
         )
 
     # Update status
@@ -226,20 +241,26 @@ async def delete_terminal(
 
     # Delete container in background
     if terminal.container_id:
+        container_id_to_delete = terminal.container_id
+
         async def _delete_container():
             container_service = get_container_service()
             try:
-                await container_service.delete_terminal_container(terminal.container_id)
+                await container_service.delete_terminal_container(
+                    container_id_to_delete
+                )
                 logger.info(f"Deleted container for terminal {terminal_id}")
             except Exception as e:
-                logger.error(f"Failed to delete container for terminal {terminal_id}: {e}")
+                logger.error(
+                    f"Failed to delete container for terminal {terminal_id}: {e}"
+                )
 
         background_tasks.add_task(_delete_container)
 
     return {
         "status": "success",
         "terminal_id": terminal.id,
-        "message": "Terminal deleted successfully"
+        "message": "Terminal deleted successfully",
     }
 
 
@@ -253,7 +274,7 @@ async def get_terminal_status(terminal_id: str, db: Session = Depends(get_db)):
     if not terminal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {terminal_id} not found"
+            detail=f"Terminal {terminal_id} not found",
         )
 
     # Map terminal status to operation status
@@ -269,5 +290,5 @@ async def get_terminal_status(terminal_id: str, db: Session = Depends(get_db)):
         operation_id=terminal.id,
         status=operation_status,
         terminal_id=terminal.id,
-        message=terminal.error_message
+        message=terminal.error_message,
     )

@@ -46,7 +46,6 @@ terminal-server/
 ├── src/
 │   ├── api_server.py                # API Server entry point (port 8000)
 │   ├── web_server.py                # Web Server entry point (port 8001)
-│   ├── main.py                      # Legacy monolithic app (deprecated)
 │   ├── config.py                    # Configuration management
 │   ├── celery_app.py                # Celery configuration
 │   ├── database/
@@ -76,6 +75,8 @@ terminal-server/
 ├── tests/
 │   ├── test_api.py                  # API integration tests
 │   └── __init__.py                  # Test package marker
+├── deprecated/
+│   └── main.py                      # Legacy monolithic app (archived)
 ├── docker-compose.yml               # Local development setup
 ├── Dockerfile                       # API/Web server image
 ├── Makefile                         # Common commands

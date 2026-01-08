@@ -11,8 +11,9 @@ alembic==1.13.1
 
 # Container Management
 kubernetes==29.0.0
-docker==5.0.3
-urllib3==1.25.11  # Docker SDK compatibility - specific version known to work
+docker==7.1.0
+requests==2.32.3
+urllib3==2.2.2
 
 # Background Tasks
 celery==5.3.6

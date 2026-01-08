@@ -1,6 +1,7 @@
 """
 Pydantic schemas for API request/response validation
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
@@ -9,11 +10,13 @@ from src.database.models import TerminalStatus
 
 class TerminalCreate(BaseModel):
     """Request schema for creating a terminal"""
+
     pass  # No input required for basic creation
 
 
 class TerminalResponse(BaseModel):
     """Response schema for terminal details"""
+
     id: str
     user_id: Optional[str] = None
     status: TerminalStatus
@@ -32,12 +35,14 @@ class TerminalResponse(BaseModel):
 
 class TerminalListResponse(BaseModel):
     """Response schema for listing terminals"""
+
     terminals: list[TerminalResponse]
     total: int
 
 
 class TerminalCallbackRequest(BaseModel):
     """Request schema for container callback"""
+
     terminal_id: str
     tunnel_url: Optional[str] = None
     status: Optional[TerminalStatus] = None
@@ -46,6 +51,7 @@ class TerminalCallbackRequest(BaseModel):
 
 class OperationResponse(BaseModel):
     """Response schema for long-running operations"""
+
     operation_id: str
     status: str
     terminal_id: Optional[str] = None
@@ -54,6 +60,7 @@ class OperationResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Response schema for health check"""
+
     status: str = "healthy"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     version: str = "1.0.0"

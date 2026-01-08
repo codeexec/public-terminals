@@ -2,49 +2,31 @@
 Container Service - Manages terminal container lifecycle
 Supports both Docker and Kubernetes
 """
+
+import docker
+import os
 import logging
 from typing import Optional, Dict
-from abc import ABC, abstractmethod
 
 from src.config import settings
+from src.services.interfaces import ContainerServiceInterface
 
 logger = logging.getLogger(__name__)
-
-
-class ContainerServiceInterface(ABC):
-    """Abstract interface for container management"""
-
-    @abstractmethod
-    async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
-        """Create a new terminal container"""
-        pass
-
-    @abstractmethod
-    async def delete_terminal_container(self, container_id: str) -> bool:
-        """Delete a terminal container"""
-        pass
-
-    @abstractmethod
-    async def get_container_status(self, container_id: str) -> Optional[str]:
-        """Get container status"""
-        pass
 
 
 class DockerContainerService(ContainerServiceInterface):
     """Docker-based container management"""
 
     def __init__(self):
-        import docker
-        import os
 
         # Use APIClient (low-level) instead of DockerClient
         # Don't specify base_url - let docker SDK auto-detect via DOCKER_HOST env or defaults
         try:
             # Ensure DOCKER_HOST is not set to avoid URL parsing issues
-            if 'DOCKER_HOST' in os.environ and os.environ['DOCKER_HOST']:
-                del os.environ['DOCKER_HOST']
+            if "DOCKER_HOST" in os.environ and os.environ["DOCKER_HOST"]:
+                del os.environ["DOCKER_HOST"]
 
-            self.client = docker.APIClient(version='1.41')
+            self.client = docker.APIClient(version="1.41")
             # Test the connection
             self.client.ping()
             logger.info("Docker container service initialized successfully")
@@ -71,8 +53,8 @@ class DockerContainerService(ContainerServiceInterface):
 
             # Resource limits
             host_config = self.client.create_host_config(
-                mem_limit='1g',
-                nano_cpus=1000000000  # 1 CPU core
+                mem_limit="1g",
+                nano_cpus=1000000000,  # 1 CPU core
             )
 
             # Create container using low-level API
@@ -89,12 +71,14 @@ class DockerContainerService(ContainerServiceInterface):
                 networking_config=None,
             )
 
-            container_id = container.get('Id')
+            container_id = str(container.get("Id"))
 
             # Start the container
             self.client.start(container=container_id)
 
-            logger.info(f"Created Docker container: {container_id} for terminal {terminal_id}")
+            logger.info(
+                f"Created Docker container: {container_id} for terminal {terminal_id}"
+            )
 
             return {
                 "container_id": container_id,
@@ -102,7 +86,9 @@ class DockerContainerService(ContainerServiceInterface):
             }
 
         except Exception as e:
-            logger.error(f"Failed to create Docker container for terminal {terminal_id}: {e}")
+            logger.error(
+                f"Failed to create Docker container for terminal {terminal_id}: {e}"
+            )
             raise
 
     async def delete_terminal_container(self, container_id: str) -> bool:
@@ -120,7 +106,10 @@ class DockerContainerService(ContainerServiceInterface):
         """Get Docker container status"""
         try:
             container_info = self.client.inspect_container(container=container_id)
-            return container_info.get('State', {}).get('Status')
+            status = container_info.get("State", {}).get("Status")
+            if isinstance(status, str):
+                return status
+            return str(status) if status is not None else None
         except Exception as e:
             logger.error(f"Failed to get status for container {container_id}: {e}")
             return None
@@ -140,7 +129,9 @@ class KubernetesContainerService(ContainerServiceInterface):
 
         self.v1 = client.CoreV1Api()
         self.namespace = settings.K8S_NAMESPACE
-        logger.info(f"Kubernetes container service initialized (namespace: {self.namespace})")
+        logger.info(
+            f"Kubernetes container service initialized (namespace: {self.namespace})"
+        )
 
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """
@@ -162,7 +153,7 @@ class KubernetesContainerService(ContainerServiceInterface):
                 labels={
                     "app": "terminal-server",
                     "terminal-id": terminal_id,
-                }
+                },
             ),
             spec=client.V1PodSpec(
                 restart_policy="Never",
@@ -172,10 +163,13 @@ class KubernetesContainerService(ContainerServiceInterface):
                         image=settings.TERMINAL_IMAGE,
                         env=[
                             client.V1EnvVar(name="TERMINAL_ID", value=terminal_id),
-                            client.V1EnvVar(name="API_CALLBACK_URL",
-                                          value=f"{settings.API_BASE_URL}/api/v1/callbacks"),
-                            client.V1EnvVar(name="LOCALTUNNEL_HOST",
-                                          value=settings.LOCALTUNNEL_HOST),
+                            client.V1EnvVar(
+                                name="API_CALLBACK_URL",
+                                value=f"{settings.API_BASE_URL}/api/v1/callbacks",
+                            ),
+                            client.V1EnvVar(
+                                name="LOCALTUNNEL_HOST", value=settings.LOCALTUNNEL_HOST
+                            ),
                         ],
                         ports=[client.V1ContainerPort(container_port=8888)],
                         resources=client.V1ResourceRequirements(
@@ -183,18 +177,17 @@ class KubernetesContainerService(ContainerServiceInterface):
                             limits={"cpu": "1", "memory": "1Gi"},
                         ),
                     )
-                ]
-            )
+                ],
+            ),
         )
 
         try:
             # Create the pod
-            self.v1.create_namespaced_pod(
-                namespace=self.namespace,
-                body=pod_manifest
-            )
+            self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
 
-            logger.info(f"Created Kubernetes pod: {pod_name} for terminal {terminal_id}")
+            logger.info(
+                f"Created Kubernetes pod: {pod_name} for terminal {terminal_id}"
+            )
 
             return {
                 "container_id": pod_name,
@@ -202,7 +195,9 @@ class KubernetesContainerService(ContainerServiceInterface):
             }
 
         except Exception as e:
-            logger.error(f"Failed to create Kubernetes pod for terminal {terminal_id}: {e}")
+            logger.error(
+                f"Failed to create Kubernetes pod for terminal {terminal_id}: {e}"
+            )
             raise
 
     async def delete_terminal_container(self, container_id: str) -> bool:
@@ -222,10 +217,10 @@ class KubernetesContainerService(ContainerServiceInterface):
         """Get Kubernetes Pod status"""
         try:
             pod = self.v1.read_namespaced_pod(
-                name=container_id,
-                namespace=self.namespace
+                name=container_id, namespace=self.namespace
             )
-            return pod.status.phase
+            phase = pod.status.phase
+            return str(phase) if phase else None
         except Exception as e:
             logger.error(f"Failed to get status for pod {container_id}: {e}")
             return None
@@ -239,4 +234,5 @@ def get_container_service() -> ContainerServiceInterface:
     else:
         # Use CLI-based service to avoid urllib3 compatibility issues
         from src.services.docker_cli_service import DockerCLIService
+
         return DockerCLIService()

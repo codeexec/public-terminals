@@ -2,6 +2,7 @@
 API Callback Routes
 Endpoints for containers to report back status and tunnel URLs
 """
+
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -16,8 +17,7 @@ router = APIRouter(prefix="/callbacks", tags=["callbacks"])
 
 @router.post("/tunnel", status_code=status.HTTP_200_OK)
 async def report_tunnel_url(
-    callback: TerminalCallbackRequest,
-    db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
 ):
     """
     Callback endpoint for containers to report their tunnel URL
@@ -32,7 +32,7 @@ async def report_tunnel_url(
         logger.error(f"Terminal {callback.terminal_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found"
+            detail=f"Terminal {callback.terminal_id} not found",
         )
 
     # Update tunnel URL and status
@@ -42,25 +42,28 @@ async def report_tunnel_url(
     db.commit()
     db.refresh(terminal)
 
-    logger.info(f"Updated terminal {callback.terminal_id} with tunnel URL: {callback.tunnel_url}")
+    logger.info(
+        f"Updated terminal {callback.terminal_id} with tunnel URL: {callback.tunnel_url}"
+    )
 
     return {
         "status": "success",
         "terminal_id": terminal.id,
-        "message": "Tunnel URL registered successfully"
+        "message": "Tunnel URL registered successfully",
     }
 
 
 @router.post("/status", status_code=status.HTTP_200_OK)
 async def report_status(
-    callback: TerminalCallbackRequest,
-    db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
 ):
     """
     Callback endpoint for containers to report their status
     Can be used to report errors or status changes
     """
-    logger.info(f"Received status callback for terminal {callback.terminal_id}: {callback.status}")
+    logger.info(
+        f"Received status callback for terminal {callback.terminal_id}: {callback.status}"
+    )
 
     # Find the terminal
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
@@ -69,7 +72,7 @@ async def report_status(
         logger.error(f"Terminal {callback.terminal_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found"
+            detail=f"Terminal {callback.terminal_id} not found",
         )
 
     # Update status
@@ -88,14 +91,13 @@ async def report_status(
     return {
         "status": "success",
         "terminal_id": terminal.id,
-        "message": "Status updated successfully"
+        "message": "Status updated successfully",
     }
 
 
 @router.post("/health", status_code=status.HTTP_200_OK)
 async def container_health_check(
-    callback: TerminalCallbackRequest,
-    db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
 ):
     """
     Health check endpoint for containers to ping
@@ -107,11 +109,8 @@ async def container_health_check(
     if not terminal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found"
+            detail=f"Terminal {callback.terminal_id} not found",
         )
 
     # Just acknowledging the health check
-    return {
-        "status": "healthy",
-        "terminal_id": terminal.id
-    }
+    return {"status": "healthy", "terminal_id": terminal.id}

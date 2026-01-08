@@ -33,7 +33,7 @@ build-terminal:
 
 build-api:
 	@echo "Building API server image..."
-	docker build -f Dockerfile.api -t terminal-api:latest .
+	docker build -f Dockerfile -t terminal-api:latest .
 	@echo "API server image built successfully!"
 
 build: build-terminal build-api

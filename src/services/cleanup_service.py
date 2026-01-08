@@ -1,6 +1,7 @@
 """
 Cleanup Service - Handles TTL enforcement and expired terminal cleanup
 """
+
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -27,14 +28,20 @@ class CleanupService:
 
         with get_db_context() as db:
             # Query for expired terminals that are still active
-            expired_terminals = db.query(Terminal).filter(
-                Terminal.expires_at < datetime.utcnow(),
-                Terminal.status.in_([
-                    TerminalStatus.STARTED,
-                    TerminalStatus.STARTING,
-                    TerminalStatus.PENDING
-                ])
-            ).all()
+            expired_terminals = (
+                db.query(Terminal)
+                .filter(
+                    Terminal.expires_at < datetime.utcnow(),
+                    Terminal.status.in_(
+                        [
+                            TerminalStatus.STARTED,
+                            TerminalStatus.STARTING,
+                            TerminalStatus.PENDING,
+                        ]
+                    ),
+                )
+                .all()
+            )
 
             logger.info(f"Found {len(expired_terminals)} expired terminals to clean up")
 
@@ -53,7 +60,9 @@ class CleanupService:
         # Delete container if it exists
         if terminal.container_id:
             try:
-                await self.container_service.delete_terminal_container(terminal.container_id)
+                await self.container_service.delete_terminal_container(
+                    terminal.container_id
+                )
             except Exception as e:
                 logger.error(f"Failed to delete container {terminal.container_id}: {e}")
 
@@ -73,23 +82,32 @@ class CleanupService:
 
         with get_db_context() as db:
             # Find terminals stuck in PENDING/STARTING state for too long
-            cutoff_time = datetime.utcnow()
-
-            stuck_terminals = db.query(Terminal).filter(
-                Terminal.status.in_([TerminalStatus.PENDING, TerminalStatus.STARTING]),
-                Terminal.created_at < datetime.utcnow() - timedelta(hours=max_age_hours)
-            ).all()
+            stuck_terminals = (
+                db.query(Terminal)
+                .filter(
+                    Terminal.status.in_(
+                        [TerminalStatus.PENDING, TerminalStatus.STARTING]
+                    ),
+                    Terminal.created_at
+                    < datetime.utcnow() - timedelta(hours=max_age_hours),
+                )
+                .all()
+            )
 
             logger.info(f"Found {len(stuck_terminals)} stuck terminals to clean up")
 
             for terminal in stuck_terminals:
                 try:
                     terminal.status = TerminalStatus.FAILED
-                    terminal.error_message = "Terminal failed to start within expected time"
+                    terminal.error_message = (
+                        "Terminal failed to start within expected time"
+                    )
                     terminal.deleted_at = datetime.utcnow()
 
                     if terminal.container_id:
-                        await self.container_service.delete_terminal_container(terminal.container_id)
+                        await self.container_service.delete_terminal_container(
+                            terminal.container_id
+                        )
 
                     db.commit()
                     logger.info(f"Marked stuck terminal as failed: {terminal.id}")
@@ -106,6 +124,7 @@ try:
     def run_cleanup_task():
         """Celery task to run cleanup"""
         import asyncio
+
         cleanup_service = CleanupService()
         asyncio.run(cleanup_service.cleanup_expired_terminals())
         asyncio.run(cleanup_service.cleanup_failed_terminals())

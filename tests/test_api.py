@@ -2,6 +2,7 @@
 """
 Simple test script for Terminal Server API
 """
+
 import requests
 import time
 import sys
@@ -25,7 +26,7 @@ def test_create_terminal():
     response = requests.post(f"{API_BASE}/api/v1/terminals", json={})
     assert response.status_code == 202
     data = response.json()
-    terminal_id = data['id']
+    terminal_id = data["id"]
     print(f"✓ Terminal created: {terminal_id}")
     print(f"  Status: {data['status']}")
     print(f"  Expires at: {data['expires_at']}")
@@ -38,7 +39,7 @@ def test_get_terminal(terminal_id):
     response = requests.get(f"{API_BASE}/api/v1/terminals/{terminal_id}")
     assert response.status_code == 200
     data = response.json()
-    print(f"✓ Terminal details retrieved")
+    print("✓ Terminal details retrieved")
     print(f"  Status: {data['status']}")
     print(f"  Tunnel URL: {data['tunnel_url']}")
     print(f"  Container ID: {data['container_id']}")
@@ -52,7 +53,7 @@ def test_list_terminals():
     assert response.status_code == 200
     data = response.json()
     print(f"✓ Found {data['total']} terminals")
-    for terminal in data['terminals'][:3]:  # Show first 3
+    for terminal in data["terminals"][:3]:  # Show first 3
         print(f"  - {terminal['id']}: {terminal['status']}")
     return data
 
@@ -65,20 +66,20 @@ def test_wait_for_terminal(terminal_id, max_wait=120):
     while time.time() - start_time < max_wait:
         data = test_get_terminal(terminal_id)
 
-        if data['status'] == 'started':
-            print(f"✓ Terminal is ready!")
+        if data["status"] == "started":
+            print("✓ Terminal is ready!")
             print(f"  Tunnel URL: {data['tunnel_url']}")
             print(f"  Time taken: {int(time.time() - start_time)}s")
             return data
 
-        if data['status'] == 'failed':
+        if data["status"] == "failed":
             print(f"✗ Terminal failed to start: {data['error_message']}")
             return None
 
         print(f"  Status: {data['status']} (waiting...)")
         time.sleep(5)
 
-    print(f"✗ Timeout waiting for terminal to start")
+    print("✗ Timeout waiting for terminal to start")
     return None
 
 
@@ -125,8 +126,8 @@ def main():
         print("All tests passed! ✓")
         print("=" * 60)
 
-        if terminal_data and terminal_data.get('tunnel_url'):
-            print(f"\nYou can access the terminal at:")
+        if terminal_data and terminal_data.get("tunnel_url"):
+            print("\nYou can access the terminal at:")
             print(f"  {terminal_data['tunnel_url']}")
 
     except AssertionError as e:

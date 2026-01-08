@@ -1,0 +1,6 @@
+ruff>=0.1.0
+mypy>=1.0.0
+types-requests
+types-ujson
+types-redis
+urllib3==1.25.11
