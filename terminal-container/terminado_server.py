@@ -1,23 +1,23 @@
 import tornado.ioloop
 import tornado.web
-from terminado import TermSocket, UniqueTermManager
+from terminado import TermSocket, SingleTermManager
 import logging
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Terminal manager
-term_manager = UniqueTermManager(shell_command=['bash'])
+term_manager = SingleTermManager(shell_command=['bash'])
 
 # Global state for tunnel URL
 tunnel_info = {
     'tunnel_url': None,
     'status': 'starting',
     'terminal_id': os.environ.get('TERMINAL_ID', 'unknown'),
-    'started_at': datetime.utcnow().isoformat()
+    'started_at': datetime.now(timezone.utc).isoformat()
 }
 
 class HealthHandler(tornado.web.RequestHandler):
@@ -27,7 +27,7 @@ class HealthHandler(tornado.web.RequestHandler):
         self.write(json.dumps({
             'status': 'healthy',
             'terminal_id': tunnel_info['terminal_id'],
-            'uptime': (datetime.utcnow() - datetime.fromisoformat(tunnel_info['started_at'])).seconds
+            'uptime': (datetime.now(timezone.utc) - datetime.fromisoformat(tunnel_info['started_at'])).seconds
         }))
 
 class StatusHandler(tornado.web.RequestHandler):
