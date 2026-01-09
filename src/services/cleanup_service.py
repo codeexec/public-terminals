@@ -37,6 +37,7 @@ class CleanupService:
                             TerminalStatus.STARTED,
                             TerminalStatus.STARTING,
                             TerminalStatus.PENDING,
+                            TerminalStatus.STOPPED,
                         ]
                     ),
                 )
@@ -114,6 +115,55 @@ class CleanupService:
                 except Exception as e:
                     logger.error(f"Failed to cleanup stuck terminal {terminal.id}: {e}")
 
+    async def cleanup_idle_terminals(self, idle_timeout_minutes: int = 60):
+        """
+        Find and stop all idle terminals (no activity for N minutes)
+        This helps free resources while keeping terminal record for restart
+        """
+        logger.info(f"Starting cleanup of idle terminals (timeout: {idle_timeout_minutes} minutes)")
+
+        with get_db_context() as db:
+            # Query for terminals that are running but idle
+            running_terminals = (
+                db.query(Terminal)
+                .filter(
+                    Terminal.status == TerminalStatus.STARTED,
+                    Terminal.deleted_at.is_(None),
+                )
+                .all()
+            )
+
+            idle_terminals = [t for t in running_terminals if t.is_idle(idle_timeout_minutes)]
+
+            logger.info(f"Found {len(idle_terminals)} idle terminals to stop")
+
+            for terminal in idle_terminals:
+                try:
+                    await self._stop_idle_terminal(db, terminal)
+                except Exception as e:
+                    logger.error(f"Failed to stop idle terminal {terminal.id}: {e}")
+
+        logger.info("Completed cleanup of idle terminals")
+
+    async def _stop_idle_terminal(self, db: Session, terminal: Terminal):
+        """Stop a single idle terminal"""
+        logger.info(f"Stopping idle terminal: {terminal.id}")
+
+        # Stop container if it exists
+        if terminal.container_id:
+            try:
+                await self.container_service.stop_terminal_container(
+                    terminal.container_id
+                )
+            except Exception as e:
+                logger.error(f"Failed to stop container {terminal.container_id}: {e}")
+
+        # Update terminal status to STOPPED (not deleted, so it can be restarted)
+        terminal.status = TerminalStatus.STOPPED
+        db.commit()
+
+        logger.info(f"Successfully stopped idle terminal: {terminal.id}")
+
 
 # Celery task for periodic cleanup
 try:
@@ -128,6 +178,17 @@ try:
         cleanup_service = CleanupService()
         asyncio.run(cleanup_service.cleanup_expired_terminals())
         asyncio.run(cleanup_service.cleanup_failed_terminals())
+
+    @shared_task
+    def run_idle_timeout_task():
+        """Celery task to check for idle terminals"""
+        import asyncio
+        from src.config import settings
+
+        cleanup_service = CleanupService()
+        asyncio.run(cleanup_service.cleanup_idle_terminals(
+            settings.TERMINAL_IDLE_TIMEOUT_MINUTES
+        ))
 
 except ImportError:
     logger.warning("Celery not available, periodic cleanup tasks won't be registered")

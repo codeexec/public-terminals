@@ -229,6 +229,54 @@ class DockerCLIService(ContainerServiceInterface):
             logger.error(f"Failed to delete Docker container {container_id}: {e}")
             return False
 
+    async def stop_terminal_container(self, container_id: str) -> bool:
+        """Stop a Docker container for idle timeout"""
+        try:
+            # Get terminal_id from container name to clean up resolv.conf (if using gVisor)
+            if settings.USE_GVISOR:
+                inspect_result = subprocess.run(
+                    ["docker", "inspect", "--format", "{{.Name}}", container_id],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if inspect_result.returncode == 0:
+                    container_name = inspect_result.stdout.strip().lstrip('/')
+                    if container_name.startswith('terminal-'):
+                        terminal_id = container_name.replace('terminal-', '')
+                        container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{terminal_id}.conf"
+                        try:
+                            if os.path.exists(container_resolv_path):
+                                os.remove(container_resolv_path)
+                                logger.info(f"Cleaned up resolv.conf for {terminal_id}")
+                        except Exception as e:
+                            logger.warning(f"Failed to cleanup resolv.conf: {e}")
+
+            # Stop container
+            subprocess.run(
+                ["docker", "stop", "--time=10", container_id],
+                capture_output=True,
+                timeout=15
+            )
+
+            # Remove container
+            result = subprocess.run(
+                ["docker", "rm", container_id], capture_output=True, timeout=10
+            )
+
+            if result.returncode == 0:
+                logger.info(f"Stopped Docker container for idle timeout: {container_id}")
+                return True
+            else:
+                logger.error(
+                    f"Failed to stop container {container_id}: {result.stderr.decode()}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to stop Docker container {container_id}: {e}")
+            return False
+
     async def get_container_status(self, container_id: str) -> Optional[str]:
         """Get Docker container status"""
         try:

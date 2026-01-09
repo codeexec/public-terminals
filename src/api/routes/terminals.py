@@ -166,9 +166,14 @@ async def create_terminal(
 
 
 @router.get("/{terminal_id}", response_model=TerminalResponse)
-async def get_terminal(terminal_id: str, db: Session = Depends(get_db)):
+async def get_terminal(
+    terminal_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """
     Get details of a specific terminal
+    If terminal is stopped, automatically restart it
     """
     terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
 
@@ -177,6 +182,15 @@ async def get_terminal(terminal_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Terminal {terminal_id} not found",
         )
+
+    # Auto-restart stopped terminals
+    if terminal.status == TerminalStatus.STOPPED:
+        logger.info(f"Auto-restarting stopped terminal {terminal_id}")
+        terminal.status = TerminalStatus.PENDING
+        db.commit()
+
+        # Create new container in background (reuse existing function)
+        background_tasks.add_task(_create_terminal_background, terminal.id, db)
 
     return terminal
 

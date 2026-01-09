@@ -20,9 +20,9 @@ class TerminalStatus(str, enum.Enum):
     PENDING = "pending"
     STARTING = "starting"
     STARTED = "started"
+    STOPPED = "stopped"
     EXPIRED = "expired"
     FAILED = "failed"
-    # STOPPED = "stopped"  # Not used - terminals are soft-deleted instead
 
 
 class Terminal(Base):
@@ -60,6 +60,9 @@ class Terminal(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     # Error tracking
     error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -81,6 +84,30 @@ class Terminal(Base):
             # Fallback if DB returns naive (though it shouldn't with timezone=True)
             return now.replace(tzinfo=None) > self.expires_at
         return now > self.expires_at
+
+    def is_idle(self, idle_timeout_minutes: int) -> bool:
+        """Check if terminal has been idle for longer than the timeout"""
+        if self.last_activity_at is None:
+            # If never tracked activity, use created_at as fallback
+            check_time = self.created_at
+        else:
+            check_time = self.last_activity_at
+
+        if check_time is None:
+            return False
+
+        # Ensure we are comparing offset-aware datetimes
+        now = datetime.now(timezone.utc)
+        idle_threshold = now - timedelta(minutes=idle_timeout_minutes)
+
+        if check_time.tzinfo is None:
+            # Fallback if DB returns naive
+            return check_time < idle_threshold.replace(tzinfo=None)
+        return check_time < idle_threshold
+
+    def set_last_activity(self) -> None:
+        """Update the last activity timestamp to now"""
+        self.last_activity_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> dict:
         """Convert to dictionary"""

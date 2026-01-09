@@ -102,6 +102,17 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to delete Docker container {container_id}: {e}")
             return False
 
+    async def stop_terminal_container(self, container_id: str) -> bool:
+        """Stop a Docker container for idle timeout"""
+        try:
+            self.client.stop(container=container_id, timeout=10)
+            self.client.remove_container(container=container_id)
+            logger.info(f"Stopped Docker container for idle timeout: {container_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to stop Docker container {container_id}: {e}")
+            return False
+
     async def get_container_status(self, container_id: str) -> Optional[str]:
         """Get Docker container status"""
         try:
@@ -211,6 +222,19 @@ class KubernetesContainerService(ContainerServiceInterface):
             return True
         except Exception as e:
             logger.error(f"Failed to delete Kubernetes pod {container_id}: {e}")
+            return False
+
+    async def stop_terminal_container(self, container_id: str) -> bool:
+        """Stop a Kubernetes Pod for idle timeout"""
+        try:
+            self.v1.delete_namespaced_pod(
+                name=container_id,
+                namespace=self.namespace,
+            )
+            logger.info(f"Stopped Kubernetes pod for idle timeout: {container_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to stop Kubernetes pod {container_id}: {e}")
             return False
 
     async def get_container_status(self, container_id: str) -> Optional[str]:

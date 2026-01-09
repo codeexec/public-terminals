@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     RESOLV_CONF_CONTAINER_DIR: str = "/app/terminal-container/tmp-resolv"
     # Host path for resolv.conf files (for gVisor DNS fix)
     RESOLV_CONF_HOST_DIR: str = "/home/jupyter/public-terminals/terminal-container/tmp-resolv"
+    TERMINAL_IDLE_TIMEOUT_MINUTES: int = 60
     TERMINAL_IMAGE: str = "terminal-server:latest"
     TERMINAL_TTL_HOURS: int = 24
 

@@ -27,6 +27,7 @@ class TerminalResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     expires_at: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
     error_message: Optional[str] = None
 
     class Config:

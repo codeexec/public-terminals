@@ -112,5 +112,9 @@ async def container_health_check(
             detail=f"Terminal {callback.terminal_id} not found",
         )
 
+    # Track activity for idle timeout detection
+    terminal.set_last_activity()
+    db.commit()
+
     # Just acknowledging the health check
     return {"status": "healthy", "terminal_id": terminal.id}

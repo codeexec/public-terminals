@@ -16,6 +16,11 @@ class ContainerServiceInterface(ABC):
         pass
 
     @abstractmethod
+    async def stop_terminal_container(self, container_id: str) -> bool:
+        """Stop a terminal container (used for idle timeout)"""
+        pass
+
+    @abstractmethod
     async def get_container_status(self, container_id: str) -> Optional[str]:
         """Get container status"""
         pass
