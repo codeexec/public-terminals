@@ -34,6 +34,12 @@
             border-radius: 4px;
             font-weight: bold;
         }
+        .progress {
+            background-color: #333;
+        }
+        .progress-bar {
+            background-color: #0d6efd;
+        }
     </style>
 </head>
 <body>
@@ -88,6 +94,52 @@
 
             <div id="admin-alert-area"></div>
 
+            <!-- System Resources -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted"><i class="bi bi-cpu"></i> System CPU</h5>
+                            <div class="d-flex align-items-center">
+                                <h2 id="sys-cpu-percent" class="mb-0 me-3">0%</h2>
+                                <div class="progress flex-grow-1" style="height: 10px;">
+                                    <div id="sys-cpu-bar" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <small class="text-muted"><span id="sys-cpu-cores">0</span> cores</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted"><i class="bi bi-memory"></i> System Memory</h5>
+                            <div class="d-flex align-items-center">
+                                <h2 id="sys-mem-percent" class="mb-0 me-3">0%</h2>
+                                <div class="progress flex-grow-1" style="height: 10px;">
+                                    <div id="sys-mem-bar" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <small class="text-muted"><span id="sys-mem-used">0</span> GB / <span id="sys-mem-total">0</span> GB</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted"><i class="bi bi-hdd"></i> System Disk</h5>
+                            <div class="d-flex align-items-center">
+                                <h2 id="sys-disk-percent" class="mb-0 me-3">0%</h2>
+                                <div class="progress flex-grow-1" style="height: 10px;">
+                                    <div id="sys-disk-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <small class="text-muted"><span id="sys-disk-used">0</span> GB / <span id="sys-disk-total">0</span> GB</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Stats Cards -->
             <div class="row mb-4">
                 <div class="col-md-3">
@@ -138,6 +190,7 @@
                                     <th>Created</th>
                                     <th>Expires</th>
                                     <th>Container</th>
+                                    <th>Resources</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -165,9 +218,11 @@
         // State management
         let authToken = localStorage.getItem('admin_token');
         let autoRefreshInterval = null;
+        let statsCache = {}; // Cache for terminal stats
 
         // Utility functions
         function timeSince(date) {
+            if (!date) return 'N/A';
             const seconds = Math.floor((new Date() - new Date(date)) / 1000);
             const intervals = {
                 year: 31536000,
@@ -187,17 +242,20 @@
         }
 
         function timeUntil(date) {
+            if (!date) return 'N/A';
             const seconds = Math.floor((new Date(date) - new Date()) / 1000);
 
             // If already expired
             if (seconds < 0) {
                 return 'expired';
             }
+            
+            // If more than 24 hours, show days
+            if (seconds > 86400) {
+                 return `in ${Math.floor(seconds / 86400)} days`;
+            }
 
             const intervals = {
-                year: 31536000,
-                month: 2592000,
-                day: 86400,
                 hour: 3600,
                 minute: 60
             };
@@ -267,7 +325,8 @@
         // API functions with JWT
         async function loadTerminals() {
             try {
-                const response = await fetch(`${API_BASE}/admin/terminals`, {
+                // Fetch stats which includes terminals list and system info
+                const response = await fetch(`${API_BASE}/admin/stats`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`
                     }
@@ -281,14 +340,64 @@
 
                 if (response.ok) {
                     const data = await response.json();
+                    renderSystemStats(data.system);
                     renderTerminals(data.terminals);
-                    updateStats(data.terminals);
+                    updateSummaryStats(data.terminals);
+                    // Fetch resource stats lazily
+                    loadResourceStats(data.terminals);
                 } else {
-                    showAlert('Failed to load terminals', 'danger', 'admin-alert-area');
+                    showAlert('Failed to load stats', 'danger', 'admin-alert-area');
                 }
             } catch (error) {
-                showAlert('Error loading terminals: ' + error.message, 'danger', 'admin-alert-area');
+                showAlert('Error loading stats: ' + error.message, 'danger', 'admin-alert-area');
             }
+        }
+
+        async function loadResourceStats(terminals) {
+            // Process in batches of 5 to avoid overwhelming the server
+            const batchSize = 5;
+            for (let i = 0; i < terminals.length; i += batchSize) {
+                const batch = terminals.slice(i, i + batchSize);
+                const promises = batch.map(async (t) => {
+                    if (!t.container_id) return;
+                    
+                    try {
+                        const response = await fetch(`${API_BASE}/admin/terminals/${t.container_id}/stats`, {
+                            headers: { 'Authorization': `Bearer ${authToken}` }
+                        });
+                        
+                        if (response.ok) {
+                            const stats = await response.json();
+                            updateTerminalStatsRow(t.id, stats);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to load stats for ${t.id}`, e);
+                    }
+                });
+                
+                await Promise.all(promises);
+            }
+        }
+
+        function updateTerminalStatsRow(terminalId, stats) {
+            // Update cache
+            statsCache[terminalId] = stats;
+            
+            const cell = document.getElementById(`resources-${terminalId}`);
+            if (!cell) return;
+            
+            if (stats.error) {
+                cell.innerHTML = '<span class="text-danger small">Error</span>';
+                return;
+            }
+
+            // Compact display
+            cell.innerHTML = `
+                <div style="line-height: 1.2; font-size: 0.85rem;">
+                    <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${stats.cpu_percent}%</span>
+                    <span class="text-nowrap"><i class="bi bi-memory"></i> ${Math.round(stats.memory_mb)}MB</span>
+                </div>
+            `;
         }
 
         async function deleteTerminal(terminalId) {
@@ -319,13 +428,34 @@
         }
 
         // Rendering functions
+        function renderSystemStats(sys) {
+            if (!sys) return;
+            
+            // CPU
+            document.getElementById('sys-cpu-percent').textContent = `${sys.cpu.percent}%`;
+            document.getElementById('sys-cpu-bar').style.width = `${sys.cpu.percent}%`;
+            document.getElementById('sys-cpu-cores').textContent = sys.cpu.cores;
+            
+            // Memory
+            document.getElementById('sys-mem-percent').textContent = `${sys.memory.percent}%`;
+            document.getElementById('sys-mem-bar').style.width = `${sys.memory.percent}%`;
+            document.getElementById('sys-mem-used').textContent = sys.memory.used_gb;
+            document.getElementById('sys-mem-total').textContent = sys.memory.total_gb;
+            
+            // Disk
+            document.getElementById('sys-disk-percent').textContent = `${sys.disk.percent}%`;
+            document.getElementById('sys-disk-bar').style.width = `${sys.disk.percent}%`;
+            document.getElementById('sys-disk-used').textContent = sys.disk.used_gb;
+            document.getElementById('sys-disk-total').textContent = sys.disk.total_gb;
+        }
+
         function renderTerminals(terminals) {
             const tbody = document.getElementById('terminals-table-body');
 
             if (terminals.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="7" class="text-center text-muted">
+                        <td colspan="8" class="text-center text-muted">
                             No terminals found
                         </td>
                     </tr>
@@ -335,44 +465,67 @@
 
             tbody.innerHTML = terminals.map(t => {
                 const statusClass = `status-${t.status.toLowerCase()}`;
+                
+                // Resources: Use cache or loader
+                let resourceHtml;
+                if (statsCache[t.id]) {
+                    const stats = statsCache[t.id];
+                    resourceHtml = `
+                        <div id="resources-${t.id}" style="line-height: 1.2; font-size: 0.85rem;">
+                            <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${stats.cpu_percent}%</span>
+                            <span class="text-nowrap"><i class="bi bi-memory"></i> ${Math.round(stats.memory_mb)}MB</span>
+                        </div>
+                    `;
+                } else {
+                    resourceHtml = `<div id="resources-${t.id}" class="text-muted small">
+                        <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                    </div>`;
+                }
+
+                // User ID display
+                const userIdDisplay = t.user_id 
+                    ? `<code class="text-muted">${t.user_id.substring(0, 8)}...</code>`
+                    : '<span class="badge bg-secondary">Guest</span>';
+
+                // Actions: Restore Open button
+                const actionsHtml = `
+                    ${t.tunnel_url ? 
+                        `<a href="${t.tunnel_url}" target="_blank" class="btn btn-sm btn-success me-1" title="Open Terminal">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>` : ''
+                    }
+                    <button onclick="deleteTerminal('${t.id}')" class="btn btn-sm btn-danger" title="Terminate">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                `;
+
                 return `
                     <tr>
                         <td>
                             <code class="text-light">${t.id.substring(0, 8)}...</code>
                         </td>
-                        <td>
-                            ${t.user_id ?
-                                `<code class="text-muted">${t.user_id.substring(0, 8)}...</code>` :
-                                '<span class="text-muted">N/A</span>'
-                            }
-                        </td>
+                        <td>${userIdDisplay}</td>
                         <td>
                             <span class="badge ${statusClass}">${t.status}</span>
                         </td>
-                        <td>${timeSince(t.created_at)}</td>
-                        <td>${t.expires_at ? timeUntil(t.expires_at) : 'N/A'}</td>
+                        <td>${timeSince(t.created_at || new Date())}</td>
+                        <td>${timeUntil(t.expires_at)}</td>
                         <td>
-                            ${t.container_name ?
-                                `<code class="text-info">${t.container_name}</code>` :
+                            ${t.container_id ?
+                                `<code class="text-info" title="${t.container_id}">${t.container_id.substring(0, 12)}...</code>` :
                                 '<span class="text-muted">N/A</span>'
                             }
                         </td>
+                        <td>${resourceHtml}</td>
                         <td>
-                            ${t.tunnel_url ?
-                                `<a href="${t.tunnel_url}" target="_blank" class="btn btn-sm btn-success me-1">
-                                    <i class="bi bi-box-arrow-up-right"></i>
-                                </a>` : ''
-                            }
-                            <button onclick="deleteTerminal('${t.id}')" class="btn btn-sm btn-danger">
-                                <i class="bi bi-trash"></i>
-                            </button>
+                            ${actionsHtml}
                         </td>
                     </tr>
                 `;
             }).join('');
         }
 
-        function updateStats(terminals) {
+        function updateSummaryStats(terminals) {
             document.getElementById('stat-total').textContent = terminals.length;
             document.getElementById('stat-active').textContent =
                 terminals.filter(t => t.status === 'started').length;

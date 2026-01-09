@@ -2,3 +2,4 @@
 terminado==0.18.1
 tornado==6.4
 httpx==0.26.0
+psutil==5.9.8

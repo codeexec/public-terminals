@@ -33,6 +33,12 @@ def create_lifespan(logger):
         logger.info(f"Container Platform: {settings.CONTAINER_PLATFORM}")
         logger.info(f"Terminal TTL: {settings.TERMINAL_TTL_HOURS} hours")
 
+        if settings.ADMIN_PASSWORD == "changeme":
+            logger.warning(
+                "SECURITY WARNING: Default ADMIN_PASSWORD 'changeme' is in use. "
+                "Please change this in production using the ADMIN_PASSWORD environment variable."
+            )
+
         try:
             init_db()
             logger.info("Database initialized successfully")

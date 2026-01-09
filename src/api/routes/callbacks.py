@@ -118,3 +118,50 @@ async def container_health_check(
 
     # Just acknowledging the health check
     return {"status": "healthy", "terminal_id": terminal.id}
+
+
+@router.post("/stats", status_code=status.HTTP_200_OK)
+async def report_stats(
+    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+):
+    """
+    Callback endpoint for containers to report their resource usage statistics
+    Containers call this periodically (every 30 seconds) to push CPU and memory stats
+    """
+    # Find the terminal
+    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+
+    if not terminal:
+        logger.error(f"Terminal {callback.terminal_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Terminal {callback.terminal_id} not found",
+        )
+
+    # Update stats cache
+    if terminal.container_id and (
+        callback.cpu_percent is not None or callback.memory_mb is not None
+    ):
+        from src.services.stats_service import stats_service
+
+        stats_service.update_container_stats(
+            container_id=terminal.container_id,
+            cpu_percent=callback.cpu_percent or 0.0,
+            memory_mb=callback.memory_mb or 0.0,
+            memory_percent=callback.memory_percent or 0.0,
+        )
+
+        logger.debug(
+            f"Updated stats for terminal {callback.terminal_id}: "
+            f"CPU={callback.cpu_percent}%, MEM={callback.memory_mb}MB"
+        )
+
+    # Track activity for idle timeout detection
+    terminal.set_last_activity()
+    db.commit()
+
+    return {
+        "status": "success",
+        "terminal_id": terminal.id,
+        "message": "Stats updated successfully",
+    }

@@ -48,6 +48,9 @@ class TerminalCallbackRequest(BaseModel):
     tunnel_url: Optional[str] = None
     status: Optional[TerminalStatus] = None
     error_message: Optional[str] = None
+    cpu_percent: Optional[float] = None
+    memory_mb: Optional[float] = None
+    memory_percent: Optional[float] = None
 
 
 class OperationResponse(BaseModel):

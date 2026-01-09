@@ -3,6 +3,7 @@ Configuration management for Terminal Server
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Literal
 
 
@@ -31,6 +32,14 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_ALGORITHM: str = "HS256"
     JWT_SECRET_KEY: str = ""
+
+    @field_validator("JWT_SECRET_KEY")
+    @classmethod
+    def ensure_jwt_secret(cls, v: str) -> str:
+        if not v:
+            import secrets
+            return secrets.token_urlsafe(32)
+        return v
 
     K8S_IN_CLUSTER: bool = False
     K8S_NAMESPACE: str = "default"

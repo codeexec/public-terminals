@@ -74,6 +74,14 @@ main() {
     local term_pid=$!
     wait_for_ready "http://localhost:$PORT/health" "Terminado"
 
+    # Start Stats Reporter
+    if [[ -n "${API_CALLBACK_URL:-}" ]]; then
+        log "Starting stats reporter..."
+        nohup python /app/stats_reporter.py > /tmp/stats_reporter.log 2>&1 &
+        local stats_pid=$!
+        log "Stats reporter started (PID: $stats_pid)"
+    fi
+
     # Start Localtunnel
     local lt_cmd="lt --port $PORT"
     [[ -n "${LOCALTUNNEL_HOST:-}" ]] && lt_cmd+=" --host $LOCALTUNNEL_HOST"

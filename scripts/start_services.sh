@@ -143,7 +143,7 @@ elif [ "$MODE" == "rebuild" ]; then
     echo -e "${YELLOW}Stopping existing services...${NC}"
     sudo docker compose down > /dev/null 2>&1
     echo -e "${YELLOW}Rebuilding and recreating services...${NC}"
-    sudo docker compose build --no-cache > /dev/null 2>&1
+    sudo docker compose build --no-cache
     sudo docker compose up -d > /dev/null 2>&1
     echo ""
 else

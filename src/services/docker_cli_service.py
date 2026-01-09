@@ -352,3 +352,69 @@ class DockerCLIService(ContainerServiceInterface):
         except Exception as e:
             logger.error(f"Failed to count active containers: {e}")
             return 0
+
+    async def get_container_stats(self, container_id: str) -> Optional[Dict]:
+        """Get container resource usage statistics"""
+        try:
+            # Use docker stats --no-stream to get a snapshot
+            # Format: {{.CPUPerc}},{{.MemUsage}},{{.MemPerc}}
+            # Example output: 0.05%,10MiB / 1GiB,1.00%
+            cmd = [
+                "docker",
+                "stats",
+                container_id,
+                "--no-stream",
+                "--format",
+                "{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}}",
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0 and result.stdout.strip():
+                # Parse output
+                # Output might contain headers if not formatted correctly, but --format handles that
+                parts = result.stdout.strip().split(",")
+                if len(parts) >= 3:
+                    cpu_str = parts[0].strip().replace("%", "")
+                    mem_usage_str = (
+                        parts[1].strip().split("/")[0].strip()
+                    )  # "10MiB / 1GiB" -> "10MiB"
+                    mem_perc_str = parts[2].strip().replace("%", "")
+
+                    # Helper to convert memory string to MB
+                    def parse_memory(mem_str):
+                        mem_str = mem_str.upper()
+                        if "GIB" in mem_str or "GB" in mem_str:
+                            return (
+                                float(mem_str.replace("GIB", "").replace("GB", ""))
+                                * 1024
+                            )
+                        elif "MIB" in mem_str or "MB" in mem_str:
+                            return float(mem_str.replace("MIB", "").replace("MB", ""))
+                        elif "KIB" in mem_str or "KB" in mem_str:
+                            return (
+                                float(mem_str.replace("KIB", "").replace("KB", ""))
+                                / 1024
+                            )
+                        elif "B" in mem_str:
+                            return float(mem_str.replace("B", "")) / (1024 * 1024)
+                        return 0.0
+
+                    try:
+                        cpu_percent = float(cpu_str)
+                        memory_mb = parse_memory(mem_usage_str)
+                        memory_percent = float(mem_perc_str)
+
+                        return {
+                            "cpu_percent": cpu_percent,
+                            "memory_mb": memory_mb,
+                            "memory_percent": memory_percent,
+                        }
+                    except ValueError:
+                        pass
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get stats for container {container_id}: {e}")
+            return None

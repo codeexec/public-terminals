@@ -44,6 +44,55 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to count active containers: {e}")
             return 0
 
+    async def get_container_stats(self, container_id: str) -> Optional[Dict]:
+        """Get container resource usage statistics"""
+        try:
+            # Use docker stats (stream=False)
+            stats = self.client.stats(container_id, stream=False)
+
+            # Docker returns raw stats, we need to calculate percentages
+            # This calculation is complex and depends on API version
+            # Simplified version:
+
+            # Check if required keys exist
+            if "cpu_stats" not in stats or "precpu_stats" not in stats:
+                return None
+
+            cpu_usage = stats["cpu_stats"].get("cpu_usage", {}).get("total_usage", 0)
+            precpu_usage = (
+                stats["precpu_stats"].get("cpu_usage", {}).get("total_usage", 0)
+            )
+
+            system_cpu_usage = stats["cpu_stats"].get("system_cpu_usage", 0)
+            presystem_cpu_usage = stats["precpu_stats"].get("system_cpu_usage", 0)
+
+            online_cpus = stats["cpu_stats"].get("online_cpus", 1)
+
+            cpu_delta = cpu_usage - precpu_usage
+            system_cpu_delta = system_cpu_usage - presystem_cpu_usage
+
+            cpu_percent = 0.0
+            if system_cpu_delta > 0.0 and cpu_delta > 0.0:
+                cpu_percent = (cpu_delta / system_cpu_delta) * online_cpus * 100.0
+
+            memory_usage = stats.get("memory_stats", {}).get("usage", 0)
+            memory_limit = stats.get("memory_stats", {}).get("limit", 1)
+
+            memory_percent = 0.0
+            if memory_limit > 0:
+                memory_percent = (memory_usage / memory_limit) * 100.0
+
+            memory_mb = memory_usage / (1024 * 1024)
+
+            return {
+                "cpu_percent": round(cpu_percent, 2),
+                "memory_mb": round(memory_mb, 2),
+                "memory_percent": round(memory_percent, 2),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get container stats for {container_id}: {e}")
+            return None
+
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """
         Create a new Docker container for terminal
@@ -174,6 +223,83 @@ class KubernetesContainerService(ContainerServiceInterface):
         except Exception as e:
             logger.error(f"Failed to count active pods: {e}")
             return 0
+
+    async def get_container_stats(self, container_id: str) -> Optional[Dict]:
+        """Get Kubernetes Pod resource usage statistics"""
+        from kubernetes import client
+
+        try:
+            # We need the metrics API for this
+            custom_api = client.CustomObjectsApi()
+
+            # Retrieve metrics for the pod
+            # container_id is the pod name
+            try:
+                metrics = custom_api.get_namespaced_custom_object(
+                    group="metrics.k8s.io",
+                    version="v1beta1",
+                    namespace=self.namespace,
+                    plural="pods",
+                    name=container_id,
+                )
+            except Exception:
+                # Metrics API might not be available
+                return None
+
+            # Parse metrics
+            # Format example: {'containers': [{'name': 'terminal', 'usage': {'cpu': '10n', 'memory': '10Ki'}}]}
+
+            containers = metrics.get("containers", [])
+            if not containers:
+                return None
+
+            # We assume one container per pod named 'terminal'
+            container_metrics = next(
+                (c for c in containers if c["name"] == "terminal"), containers[0]
+            )
+            usage = container_metrics.get("usage", {})
+
+            # Parse CPU
+            cpu_usage_str = usage.get("cpu", "0")
+            cpu_percent = 0.0
+            if cpu_usage_str.endswith("n"):
+                # nanocores
+                nanocores = int(cpu_usage_str.replace("n", ""))
+                # Convert to cores then percent (assuming 1 core limit for simple calc, or just raw cores)
+                # 1000000000n = 1 core = 100%
+                cpu_percent = (nanocores / 1_000_000_000) * 100.0
+            elif cpu_usage_str.endswith("m"):
+                # millicores
+                millicores = int(cpu_usage_str.replace("m", ""))
+                cpu_percent = (millicores / 1000) * 100.0
+
+            # Parse Memory
+            mem_usage_str = usage.get("memory", "0")
+            memory_mb = 0.0
+            if mem_usage_str.endswith("Ki"):
+                memory_mb = int(mem_usage_str.replace("Ki", "")) / 1024
+            elif mem_usage_str.endswith("Mi"):
+                memory_mb = int(mem_usage_str.replace("Mi", ""))
+            elif mem_usage_str.endswith("Gi"):
+                memory_mb = int(mem_usage_str.replace("Gi", "")) * 1024
+
+            # We don't easily know the limit here without looking up the pod spec again,
+            # so we might skip memory_percent or approximate it based on our known config
+            memory_percent = 0.0
+            # Assuming 1Gi limit as per config
+            memory_limit_mb = 1024.0
+            if memory_limit_mb > 0:
+                memory_percent = (memory_mb / memory_limit_mb) * 100.0
+
+            return {
+                "cpu_percent": round(cpu_percent, 2),
+                "memory_mb": round(memory_mb, 2),
+                "memory_percent": round(memory_percent, 2),
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to get pod stats for {container_id}: {e}")
+            return None
 
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """
