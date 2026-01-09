@@ -120,7 +120,9 @@ class CleanupService:
         Find and stop all idle terminals (no activity for N minutes)
         This helps free resources while keeping terminal record for restart
         """
-        logger.info(f"Starting cleanup of idle terminals (timeout: {idle_timeout_minutes} minutes)")
+        logger.info(
+            f"Starting cleanup of idle terminals (timeout: {idle_timeout_minutes} minutes)"
+        )
 
         with get_db_context() as db:
             # Query for terminals that are running but idle
@@ -133,7 +135,9 @@ class CleanupService:
                 .all()
             )
 
-            idle_terminals = [t for t in running_terminals if t.is_idle(idle_timeout_minutes)]
+            idle_terminals = [
+                t for t in running_terminals if t.is_idle(idle_timeout_minutes)
+            ]
 
             logger.info(f"Found {len(idle_terminals)} idle terminals to stop")
 
@@ -186,9 +190,11 @@ try:
         from src.config import settings
 
         cleanup_service = CleanupService()
-        asyncio.run(cleanup_service.cleanup_idle_terminals(
-            settings.TERMINAL_IDLE_TIMEOUT_MINUTES
-        ))
+        asyncio.run(
+            cleanup_service.cleanup_idle_terminals(
+                settings.TERMINAL_IDLE_TIMEOUT_MINUTES
+            )
+        )
 
 except ImportError:
     logger.warning("Celery not available, periodic cleanup tasks won't be registered")

@@ -45,10 +45,18 @@ def create_app():
         # The JavaScript in index.html will use this injected value
         api_base_script = f"        const API_BASE = '{settings.API_BASE_URL}/api/v1';"
         modified_html_content = html_content.replace(
-            "        const API_BASE = 'http://localhost:8000/api/v1';", # Old hardcoded line
-            api_base_script
+            "        const API_BASE = 'http://localhost:8000/api/v1';",  # Old hardcoded line
+            api_base_script,
         )
-        return HTMLResponse(content=modified_html_content) # Return HTMLResponse
+        return HTMLResponse(content=modified_html_content)  # Return HTMLResponse
+
+    @app.get("/admin", tags=["admin"])
+    async def admin_page():
+        """Serve admin UI"""
+        logger.info("Serving admin.html")
+        with open("src/static/admin.html", "r") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health_check():

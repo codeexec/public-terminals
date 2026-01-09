@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
 from src.database.session import init_db
-from src.api.routes import terminals, callbacks
+from src.api.routes import terminals, callbacks, admin
 from src.api.schemas import HealthResponse
 
 
@@ -72,6 +72,7 @@ def create_app():
 
     app.include_router(terminals.router, prefix="/api/v1")
     app.include_router(callbacks.router, prefix="/api/v1")
+    app.include_router(admin.router, prefix="/api/v1")
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health_check():

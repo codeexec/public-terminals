@@ -147,6 +147,49 @@ async def create_terminal(
     Returns 202 Accepted as this is a long-running operation
     The container creation happens in the background
     """
+    # Check max containers limit
+    # 1. Check DB count
+    active_db_count = (
+        db.query(Terminal)
+        .filter(
+            Terminal.status.in_(
+                [
+                    TerminalStatus.PENDING,
+                    TerminalStatus.STARTING,
+                    TerminalStatus.STARTED,
+                ]
+            )
+        )
+        .count()
+    )
+
+    if active_db_count >= settings.MAX_CONTAINERS_PER_SERVER:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Server capacity reached (active terminals: {active_db_count})",
+        )
+
+    # 2. Check real process count (secondary safeguard)
+    # We do this asynchronously to avoid blocking, but since this endpoint is async it's fine
+    try:
+        container_service = get_container_service()
+        active_real_count = await container_service.count_active_containers()
+
+        if active_real_count >= settings.MAX_CONTAINERS_PER_SERVER:
+            logger.warning(
+                f"Real container count ({active_real_count}) exceeds DB count ({active_db_count})"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Server capacity reached",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to check container count: {e}")
+        # We don't block creation on check failure unless it's the limit exception
+        pass
+
     # Create terminal record
     terminal = Terminal()
     terminal.user_id = x_guest_id
@@ -167,9 +210,7 @@ async def create_terminal(
 
 @router.get("/{terminal_id}", response_model=TerminalResponse)
 async def get_terminal(
-    terminal_id: str,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    terminal_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """
     Get details of a specific terminal
@@ -251,6 +292,7 @@ async def delete_terminal(
 
     # Soft delete: set deleted_at timestamp
     from datetime import datetime, timezone
+
     terminal.deleted_at = datetime.now(timezone.utc)
     db.commit()
 

@@ -37,11 +37,17 @@ class DockerCLIService(ContainerServiceInterface):
         """Get the internal IP of the api-server container"""
         try:
             # Try to get it from the container name used in docker-compose
-            cmd = ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", "terminal-server-api"]
+            cmd = [
+                "docker",
+                "inspect",
+                "-f",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                "terminal-server-api",
+            ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
-            
+
             # Fallback: try to resolve it via DNS (if it works on host)
             return socket.gethostbyname("api-server")
         except Exception as e:
@@ -60,6 +66,13 @@ class DockerCLIService(ContainerServiceInterface):
 
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """Create a new Docker container for terminal"""
+        # Check container limit
+        active_count = await self.count_active_containers()
+        if active_count >= settings.MAX_CONTAINERS_PER_SERVER:
+            raise Exception(
+                f"Max container limit reached ({settings.MAX_CONTAINERS_PER_SERVER})"
+            )
+
         container_name = f"terminal-{terminal_id}"
 
         # Dynamically resolve IPs
@@ -72,15 +85,19 @@ class DockerCLIService(ContainerServiceInterface):
         host_resolv_path = None
         if settings.USE_GVISOR:
             resolv_filename = f"resolv-{terminal_id}.conf"
-            container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/{resolv_filename}"
+            container_resolv_path = (
+                f"{settings.RESOLV_CONF_CONTAINER_DIR}/{resolv_filename}"
+            )
             host_resolv_path = f"{settings.RESOLV_CONF_HOST_DIR}/{resolv_filename}"
 
             try:
-                with open(container_resolv_path, 'w') as f:
+                with open(container_resolv_path, "w") as f:
                     f.write("nameserver 8.8.8.8\n")
                     f.write("nameserver 8.8.4.4\n")
                     f.write("options ndots:0\n")
-                logger.info(f"Created custom resolv.conf for gVisor container {terminal_id}")
+                logger.info(
+                    f"Created custom resolv.conf for gVisor container {terminal_id}"
+                )
             except Exception as e:
                 logger.warning(f"Failed to create custom resolv.conf: {e}")
                 host_resolv_path = None
@@ -102,18 +119,20 @@ class DockerCLIService(ContainerServiceInterface):
             else:
                 logger.info(f"Using default runtime for container {terminal_id}")
 
-            cmd.extend([
-                "--name",
-                container_name,
-                "--network",
-                settings.DOCKER_NETWORK,  # Use same network as API
-                "--memory",
-                "1g",
-                "--cpus",
-                "1",
-                "-p",
-                "0:8888",  # Map to random host port
-            ])
+            cmd.extend(
+                [
+                    "--name",
+                    container_name,
+                    "--network",
+                    settings.DOCKER_NETWORK,  # Use same network as API
+                    "--memory",
+                    settings.CONTAINER_MEMORY_LIMIT,
+                    "--cpus",
+                    str(settings.CONTAINER_CPU_LIMIT),
+                    "-p",
+                    "0:8888",  # Map to random host port
+                ]
+            )
 
             # Mount custom resolv.conf to bypass Docker DNS (required for gVisor)
             if host_resolv_path:
@@ -122,28 +141,32 @@ class DockerCLIService(ContainerServiceInterface):
                 # Fallback to --dns flags (less reliable with gVisor)
                 cmd.extend(["--dns", "8.8.8.8", "--dns", "8.8.4.4"])
 
-            cmd.extend([
-                "--add-host",
-                f"api-server:{api_ip}",
-            ])
+            cmd.extend(
+                [
+                    "--add-host",
+                    f"api-server:{api_ip}",
+                ]
+            )
 
             # Add localtunnel host mapping if resolved
             if lt_host and lt_ip:
                 cmd.extend(["--add-host", f"{lt_host}:{lt_ip}"])
 
-            cmd.extend([
-                "-e",
-                f"TERMINAL_ID={terminal_id}",
-                "-e",
-                f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
-                "-e",
-                f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
-                "--label",
-                "app=terminal-server",
-                "--label",
-                f"terminal_id={terminal_id}",
-                settings.TERMINAL_IMAGE,
-            ])
+            cmd.extend(
+                [
+                    "-e",
+                    f"TERMINAL_ID={terminal_id}",
+                    "-e",
+                    f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
+                    "-e",
+                    f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
+                    "--label",
+                    "app=terminal-server",
+                    "--label",
+                    f"terminal_id={terminal_id}",
+                    settings.TERMINAL_IMAGE,
+                ]
+            )
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
@@ -192,12 +215,12 @@ class DockerCLIService(ContainerServiceInterface):
                     ["docker", "inspect", "--format", "{{.Name}}", container_id],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
                 if inspect_result.returncode == 0:
-                    container_name = inspect_result.stdout.strip().lstrip('/')
-                    if container_name.startswith('terminal-'):
-                        terminal_id = container_name.replace('terminal-', '')
+                    container_name = inspect_result.stdout.strip().lstrip("/")
+                    if container_name.startswith("terminal-"):
+                        terminal_id = container_name.replace("terminal-", "")
                         container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{terminal_id}.conf"
                         try:
                             if os.path.exists(container_resolv_path):
@@ -238,12 +261,12 @@ class DockerCLIService(ContainerServiceInterface):
                     ["docker", "inspect", "--format", "{{.Name}}", container_id],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
                 if inspect_result.returncode == 0:
-                    container_name = inspect_result.stdout.strip().lstrip('/')
-                    if container_name.startswith('terminal-'):
-                        terminal_id = container_name.replace('terminal-', '')
+                    container_name = inspect_result.stdout.strip().lstrip("/")
+                    if container_name.startswith("terminal-"):
+                        terminal_id = container_name.replace("terminal-", "")
                         container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{terminal_id}.conf"
                         try:
                             if os.path.exists(container_resolv_path):
@@ -256,7 +279,7 @@ class DockerCLIService(ContainerServiceInterface):
             subprocess.run(
                 ["docker", "stop", "--time=10", container_id],
                 capture_output=True,
-                timeout=15
+                timeout=15,
             )
 
             # Remove container
@@ -265,7 +288,9 @@ class DockerCLIService(ContainerServiceInterface):
             )
 
             if result.returncode == 0:
-                logger.info(f"Stopped Docker container for idle timeout: {container_id}")
+                logger.info(
+                    f"Stopped Docker container for idle timeout: {container_id}"
+                )
                 return True
             else:
                 logger.error(
@@ -295,3 +320,35 @@ class DockerCLIService(ContainerServiceInterface):
         except Exception as e:
             logger.error(f"Failed to get status for container {container_id}: {e}")
             return None
+
+    async def count_active_containers(self) -> int:
+        """Count number of active terminal containers"""
+        try:
+            # Count containers with label app=terminal-server
+            # We filter by status=running to only count active ones
+            cmd = [
+                "docker",
+                "ps",
+                "--filter",
+                "label=app=terminal-server",
+                "--filter",
+                "status=running",
+                "--format",
+                "{{.ID}}",
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0:
+                # Count the number of lines (one ID per line)
+                output = result.stdout.strip()
+                if not output:
+                    return 0
+                return len(output.split("\n"))
+            else:
+                logger.error(f"Failed to count containers: {result.stderr}")
+                return 0
+
+        except Exception as e:
+            logger.error(f"Failed to count active containers: {e}")
+            return 0

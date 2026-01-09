@@ -18,7 +18,6 @@ class DockerContainerService(ContainerServiceInterface):
     """Docker-based container management"""
 
     def __init__(self):
-
         # Use APIClient (low-level) instead of DockerClient
         # Don't specify base_url - let docker SDK auto-detect via DOCKER_HOST env or defaults
         try:
@@ -34,6 +33,17 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to initialize Docker client: {e}")
             raise
 
+    async def count_active_containers(self) -> int:
+        """Count number of active terminal containers"""
+        try:
+            containers = self.client.containers(
+                filters={"label": "app=terminal-server", "status": "running"}
+            )
+            return len(containers)
+        except Exception as e:
+            logger.error(f"Failed to count active containers: {e}")
+            return 0
+
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """
         Create a new Docker container for terminal
@@ -41,6 +51,13 @@ class DockerContainerService(ContainerServiceInterface):
         Returns:
             Dict with container_id, container_name
         """
+        # Check container limit
+        active_count = await self.count_active_containers()
+        if active_count >= settings.MAX_CONTAINERS_PER_SERVER:
+            raise Exception(
+                f"Max container limit reached ({settings.MAX_CONTAINERS_PER_SERVER})"
+            )
+
         container_name = f"terminal-{terminal_id}"
 
         try:
@@ -53,8 +70,8 @@ class DockerContainerService(ContainerServiceInterface):
 
             # Resource limits
             host_config = self.client.create_host_config(
-                mem_limit="1g",
-                nano_cpus=1000000000,  # 1 CPU core
+                mem_limit=settings.CONTAINER_MEMORY_LIMIT,
+                nano_cpus=int(settings.CONTAINER_CPU_LIMIT * 1_000_000_000),
             )
 
             # Create container using low-level API
@@ -144,6 +161,20 @@ class KubernetesContainerService(ContainerServiceInterface):
             f"Kubernetes container service initialized (namespace: {self.namespace})"
         )
 
+    async def count_active_containers(self) -> int:
+        """Count number of active terminal pods"""
+        try:
+            # We list pods with the specific label and check if they are running or pending (consuming resources)
+            pods = self.v1.list_namespaced_pod(
+                namespace=self.namespace,
+                label_selector="app=terminal-server",
+                field_selector="status.phase!=Succeeded,status.phase!=Failed",
+            )
+            return len(pods.items)
+        except Exception as e:
+            logger.error(f"Failed to count active pods: {e}")
+            return 0
+
     async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
         """
         Create a new Kubernetes Pod for terminal
@@ -151,6 +182,13 @@ class KubernetesContainerService(ContainerServiceInterface):
         Returns:
             Dict with container_id (pod_name), container_name
         """
+        # Check container limit
+        active_count = await self.count_active_containers()
+        if active_count >= settings.MAX_CONTAINERS_PER_SERVER:
+            raise Exception(
+                f"Max container limit reached ({settings.MAX_CONTAINERS_PER_SERVER})"
+            )
+
         from kubernetes import client
 
         pod_name = f"terminal-{terminal_id}"
@@ -184,8 +222,14 @@ class KubernetesContainerService(ContainerServiceInterface):
                         ],
                         ports=[client.V1ContainerPort(container_port=8888)],
                         resources=client.V1ResourceRequirements(
-                            requests={"cpu": "1", "memory": "1Gi"},
-                            limits={"cpu": "1", "memory": "1Gi"},
+                            requests={
+                                "cpu": str(settings.CONTAINER_CPU_LIMIT),
+                                "memory": settings.CONTAINER_MEMORY_LIMIT,
+                            },
+                            limits={
+                                "cpu": str(settings.CONTAINER_CPU_LIMIT),
+                                "memory": settings.CONTAINER_MEMORY_LIMIT,
+                            },
                         ),
                     )
                 ],

@@ -48,6 +48,11 @@ services:
       - LOG_LEVEL=INFO
       - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
       - USE_GVISOR=${USE_GVISOR}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # For Docker-in-Docker
       - ./src:/app/src

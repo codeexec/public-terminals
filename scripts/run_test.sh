@@ -215,6 +215,7 @@ echo -e "  ${BLUE}Local URL (host):${NC}         ${GREEN}http://localhost:${HOST
 echo ""
 echo -e "${GREEN}Web UI & API:${NC}"
 echo -e "  ${BLUE}Web UI:${NC}                   ${GREEN}http://localhost:8001${NC}"
+echo -e "  ${BLUE}Admin UI:${NC}                 ${GREEN}http://localhost:8001/admin${NC}"
 echo -e "  ${BLUE}API Server:${NC}               ${GREEN}http://localhost:8000${NC}"
 echo -e "  ${BLUE}API Documentation:${NC}        ${GREEN}http://localhost:8000/docs${NC}"
 echo ""
@@ -272,6 +273,47 @@ fi
 echo ""
 
 # ============================================
+# STEP 6: TEST ADMIN API
+# ============================================
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}STEP 6: Testing Admin API${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Get admin credentials from .env
+ADMIN_USER=$(grep "^ADMIN_USERNAME=" .env 2>/dev/null | cut -d= -f2 || echo "admin")
+ADMIN_PASS=$(grep "^ADMIN_PASSWORD=" .env 2>/dev/null | cut -d= -f2 || echo "changeme")
+
+# Test admin login
+echo -n "  Admin Login: "
+ADMIN_LOGIN=$(curl -s -X POST http://localhost:8000/api/v1/admin/login \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}")
+
+ADMIN_TOKEN=$(echo $ADMIN_LOGIN | python3 -c "import sys, json; print(json.load(sys.stdin).get('access_token', ''))" 2>/dev/null || echo "")
+
+if [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "None" ]; then
+    echo -e "${GREEN}✓ success${NC}"
+else
+    echo -e "${RED}✗ failed${NC}"
+fi
+
+# Test admin terminals list
+echo -n "  Admin Terminals List: "
+ADMIN_TERMINALS=$(curl -s http://localhost:8000/api/v1/admin/terminals \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}")
+
+ADMIN_TOTAL=$(echo $ADMIN_TERMINALS | python3 -c "import sys, json; print(json.load(sys.stdin).get('total', -1))" 2>/dev/null || echo "-1")
+
+if [ "$ADMIN_TOTAL" -ge 0 ]; then
+    echo -e "${GREEN}✓ success (found ${ADMIN_TOTAL} terminals)${NC}"
+else
+    echo -e "${RED}✗ failed${NC}"
+fi
+
+echo ""
+
+# ============================================
 # SUCCESS SUMMARY
 # ============================================
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -287,7 +329,14 @@ echo "  List all terminals:   curl -s http://localhost:8000/api/v1/terminals | p
 echo "  Get terminal status:  curl -s http://localhost:8000/api/v1/terminals/${TERMINAL_ID} | python3 -m json.tool"
 echo "  Delete terminal:      curl -X DELETE http://localhost:8000/api/v1/terminals/${TERMINAL_ID}"
 echo "  Open Web UI:          open http://localhost:8001"
+echo "  Open Admin UI:        open http://localhost:8001/admin"
 echo "  API Documentation:    http://localhost:8000/docs"
+echo ""
+ADMIN_USER=$(grep "^ADMIN_USERNAME=" .env 2>/dev/null | cut -d= -f2 || echo "admin")
+ADMIN_PASS=$(grep "^ADMIN_PASSWORD=" .env 2>/dev/null | cut -d= -f2 || echo "changeme")
+echo -e "${BLUE}Admin Credentials:${NC}"
+echo "  Username: ${ADMIN_USER}"
+echo "  Password: ${ADMIN_PASS}"
 echo ""
 
 # ============================================

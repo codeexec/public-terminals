@@ -19,6 +19,9 @@ urllib3==2.2.2
 celery==5.3.6
 redis==5.0.1
 
+# Authentication
+python-jose[cryptography]==3.3.0
+
 # Utilities
 python-dotenv==1.0.0
 httpx==0.26.0

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Terminal Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+        }
+        .login-card {
+            max-width: 400px;
+            margin: 100px auto;
+        }
+        .text-muted {
+            color: #a0a0a0 !important;
+        }
+        .status-pending { color: #ffc107; }
+        .status-starting { color: #17a2b8; }
+        .status-started { color: #28a745; }
+        .status-stopped { color: #6c757d; }
+        .status-failed { color: #dc3545; }
+        .status-expired { color: #6c757d; }
+        .admin-badge {
+            background-color: #dc3545;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login View -->
+    <div id="login-view" class="container">
+        <div class="card login-card">
+            <div class="card-body p-4">
+                <h2 class="text-center mb-4">
+                    <i class="bi bi-shield-lock"></i> Admin Login
+                </h2>
+                <div id="login-alert"></div>
+                <form id="login-form">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </button>
+                </form>
+                <div class="text-center mt-3">
+                    <a href="/" class="text-muted small">← Back to user view</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard View -->
+    <div id="admin-view" style="display: none;">
+        <div class="container-fluid mt-4">
+            <div class="row mb-4 align-items-center">
+                <div class="col">
+                    <h1>
+                        <i class="bi bi-shield-check"></i> Admin Dashboard
+                        <span class="admin-badge">ADMIN</span>
+                    </h1>
+                    <small class="text-muted">Viewing all terminals across all users</small>
+                </div>
+                <div class="col-auto">
+                    <button id="refresh-btn" class="btn btn-outline-light me-2">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                    <button id="logout-btn" class="btn btn-outline-danger">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </button>
+                </div>
+            </div>
+
+            <div id="admin-alert-area"></div>
+
+            <!-- Stats Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="text-muted">Total Terminals</h5>
+                            <h2 id="stat-total">0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="text-success">Active</h5>
+                            <h2 id="stat-active">0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="text-warning">Starting</h5>
+                            <h2 id="stat-starting">0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="text-danger">Failed</h5>
+                            <h2 id="stat-failed">0</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminals Table -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">All Terminals</h5>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>User ID</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Expires</th>
+                                    <th>Container</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="terminals-table-body">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">
+                                        Loading terminals...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuration
+        const API_BASE = window.location.origin.includes('8001')
+            ? 'http://localhost:8000/api/v1'
+            : window.location.origin + '/api/v1';
+
+        // State management
+        let authToken = localStorage.getItem('admin_token');
+        let autoRefreshInterval = null;
+
+        // Utility functions
+        function timeSince(date) {
+            const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+            const intervals = {
+                year: 31536000,
+                month: 2592000,
+                day: 86400,
+                hour: 3600,
+                minute: 60
+            };
+
+            for (const [name, value] of Object.entries(intervals)) {
+                const interval = Math.floor(seconds / value);
+                if (interval >= 1) {
+                    return `${interval} ${name}${interval !== 1 ? 's' : ''} ago`;
+                }
+            }
+            return 'just now';
+        }
+
+        function timeUntil(date) {
+            const seconds = Math.floor((new Date(date) - new Date()) / 1000);
+
+            // If already expired
+            if (seconds < 0) {
+                return 'expired';
+            }
+
+            const intervals = {
+                year: 31536000,
+                month: 2592000,
+                day: 86400,
+                hour: 3600,
+                minute: 60
+            };
+
+            for (const [name, value] of Object.entries(intervals)) {
+                const interval = Math.floor(seconds / value);
+                if (interval >= 1) {
+                    return `in ${interval} ${name}${interval !== 1 ? 's' : ''}`;
+                }
+            }
+            return 'soon';
+        }
+
+        function showAlert(msg, type, viewId) {
+            const area = document.getElementById(viewId);
+            area.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${msg}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            setTimeout(() => area.innerHTML = '', 5000);
+        }
+
+        // Authentication functions
+        async function login(username, password) {
+            try {
+                const response = await fetch(`${API_BASE}/admin/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    authToken = data.access_token;
+                    localStorage.setItem('admin_token', authToken);
+                    showAdminView();
+                    loadTerminals();
+                    startAutoRefresh();
+                } else {
+                    const error = await response.json();
+                    showAlert(error.detail || 'Login failed', 'danger', 'login-alert');
+                }
+            } catch (error) {
+                showAlert('Login failed: ' + error.message, 'danger', 'login-alert');
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            localStorage.removeItem('admin_token');
+            stopAutoRefresh();
+            showLoginView();
+        }
+
+        function showLoginView() {
+            document.getElementById('login-view').style.display = 'block';
+            document.getElementById('admin-view').style.display = 'none';
+        }
+
+        function showAdminView() {
+            document.getElementById('login-view').style.display = 'none';
+            document.getElementById('admin-view').style.display = 'block';
+        }
+
+        // API functions with JWT
+        async function loadTerminals() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/terminals`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.status === 401) {
+                    logout();
+                    showAlert('Session expired. Please login again.', 'warning', 'login-alert');
+                    return;
+                }
+
+                if (response.ok) {
+                    const data = await response.json();
+                    renderTerminals(data.terminals);
+                    updateStats(data.terminals);
+                } else {
+                    showAlert('Failed to load terminals', 'danger', 'admin-alert-area');
+                }
+            } catch (error) {
+                showAlert('Error loading terminals: ' + error.message, 'danger', 'admin-alert-area');
+            }
+        }
+
+        async function deleteTerminal(terminalId) {
+            if (!confirm('Are you sure you want to terminate this terminal?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/terminals/${terminalId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.status === 401) {
+                    logout();
+                    return;
+                }
+
+                if (response.ok) {
+                    showAlert('Terminal terminated successfully', 'success', 'admin-alert-area');
+                    loadTerminals();
+                } else {
+                    showAlert('Failed to terminate terminal', 'danger', 'admin-alert-area');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'danger', 'admin-alert-area');
+            }
+        }
+
+        // Rendering functions
+        function renderTerminals(terminals) {
+            const tbody = document.getElementById('terminals-table-body');
+
+            if (terminals.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">
+                            No terminals found
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = terminals.map(t => {
+                const statusClass = `status-${t.status.toLowerCase()}`;
+                return `
+                    <tr>
+                        <td>
+                            <code class="text-light">${t.id.substring(0, 8)}...</code>
+                        </td>
+                        <td>
+                            ${t.user_id ?
+                                `<code class="text-muted">${t.user_id.substring(0, 8)}...</code>` :
+                                '<span class="text-muted">N/A</span>'
+                            }
+                        </td>
+                        <td>
+                            <span class="badge ${statusClass}">${t.status}</span>
+                        </td>
+                        <td>${timeSince(t.created_at)}</td>
+                        <td>${t.expires_at ? timeUntil(t.expires_at) : 'N/A'}</td>
+                        <td>
+                            ${t.container_name ?
+                                `<code class="text-info">${t.container_name}</code>` :
+                                '<span class="text-muted">N/A</span>'
+                            }
+                        </td>
+                        <td>
+                            ${t.tunnel_url ?
+                                `<a href="${t.tunnel_url}" target="_blank" class="btn btn-sm btn-success me-1">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>` : ''
+                            }
+                            <button onclick="deleteTerminal('${t.id}')" class="btn btn-sm btn-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateStats(terminals) {
+            document.getElementById('stat-total').textContent = terminals.length;
+            document.getElementById('stat-active').textContent =
+                terminals.filter(t => t.status === 'started').length;
+            document.getElementById('stat-starting').textContent =
+                terminals.filter(t => ['pending', 'starting'].includes(t.status)).length;
+            document.getElementById('stat-failed').textContent =
+                terminals.filter(t => t.status === 'failed').length;
+        }
+
+        // Auto-refresh
+        function startAutoRefresh() {
+            autoRefreshInterval = setInterval(loadTerminals, 10000); // Every 10 seconds
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            await login(username, password);
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', logout);
+        document.getElementById('refresh-btn').addEventListener('click', loadTerminals);
+
+        // Initialize
+        if (authToken) {
+            showAdminView();
+            loadTerminals();
+            startAutoRefresh();
+        } else {
+            showLoginView();
+        }
+    </script>
+</body>
+</html>

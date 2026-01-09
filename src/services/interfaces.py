@@ -24,3 +24,8 @@ class ContainerServiceInterface(ABC):
     async def get_container_status(self, container_id: str) -> Optional[str]:
         """Get container status"""
         pass
+
+    @abstractmethod
+    async def count_active_containers(self) -> int:
+        """Count number of active terminal containers"""
+        pass

@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Settings in alphabetical order
     # ========================================
 
+    ADMIN_PASSWORD: str = "changeme"
+    ADMIN_USERNAME: str = "admin"
+
     API_BASE_URL: str = "http://localhost:8000"
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
@@ -25,6 +28,10 @@ class Settings(BaseSettings):
     GCP_PROJECT_ID: str = ""
     GCP_REGION: str = "us-central1"
 
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_ALGORITHM: str = "HS256"
+    JWT_SECRET_KEY: str = ""
+
     K8S_IN_CLUSTER: bool = False
     K8S_NAMESPACE: str = "default"
 
@@ -35,7 +42,15 @@ class Settings(BaseSettings):
     # Container path for resolv.conf files (mounted in API container)
     RESOLV_CONF_CONTAINER_DIR: str = "/app/terminal-container/tmp-resolv"
     # Host path for resolv.conf files (for gVisor DNS fix)
-    RESOLV_CONF_HOST_DIR: str = "/home/jupyter/public-terminals/terminal-container/tmp-resolv"
+    RESOLV_CONF_HOST_DIR: str = (
+        "/home/jupyter/public-terminals/terminal-container/tmp-resolv"
+    )
+
+    # Resource Limits
+    MAX_CONTAINERS_PER_SERVER: int = 240
+    CONTAINER_MEMORY_LIMIT: str = "1g"
+    CONTAINER_CPU_LIMIT: float = 1.0
+
     TERMINAL_IDLE_TIMEOUT_MINUTES: int = 60
     TERMINAL_IMAGE: str = "terminal-server:latest"
     TERMINAL_TTL_HOURS: int = 24
@@ -46,11 +61,7 @@ class Settings(BaseSettings):
     WEB_HOST: str = "0.0.0.0"
     WEB_PORT: int = 8001
 
-    model_config = {
-        "env_file": ".env",
-        "case_sensitive": True,
-        "extra": "ignore"
-    }
+    model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
 
 settings = Settings()
