@@ -21,12 +21,53 @@ def collect_stats():
     """Collect CPU and memory statistics"""
     try:
         # Get CPU usage (percentage)
+        # Note: psutil.cpu_percent in a container returns host CPU usage by default
+        # Ideally we should use cgroups for this too, but for now we'll stick to psutil
+        # as it's less critical than the memory reporting error.
         cpu_percent = psutil.cpu_percent(interval=1)
 
         # Get memory usage
-        memory = psutil.virtual_memory()
-        memory_mb = memory.used / (1024 * 1024)
-        memory_percent = memory.percent
+        # psutil.virtual_memory() returns HOST memory in Docker.
+        # We need to read cgroups or sum process memory.
+        memory_usage_bytes = 0
+        memory_limit_bytes = 0
+        
+        try:
+            # 1. Try Cgroup V2
+            if os.path.exists("/sys/fs/cgroup/memory.current"):
+                with open("/sys/fs/cgroup/memory.current", "r") as f:
+                    memory_usage_bytes = int(f.read().strip())
+                
+                with open("/sys/fs/cgroup/memory.max", "r") as f:
+                    val = f.read().strip()
+                    if val != "max":
+                        memory_limit_bytes = int(val)
+
+            # 2. Fallback: Sum of Process RSS
+            else:
+                for p in psutil.process_iter(['memory_info']):
+                    try:
+                        memory_usage_bytes += p.info['memory_info'].rss
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+        except Exception as e:
+            logger.warning(f"Error reading memory stats: {e}")
+            # If cgroup read failed, try process sum
+            if memory_usage_bytes == 0:
+                for p in psutil.process_iter(['memory_info']):
+                    try:
+                        memory_usage_bytes += p.info['memory_info'].rss
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+        # Validate Limit
+        host_mem = psutil.virtual_memory()
+        if memory_limit_bytes == 0 or memory_limit_bytes > host_mem.total:
+            memory_limit_bytes = host_mem.total
+
+        memory_mb = memory_usage_bytes / (1024 * 1024)
+        memory_percent = (memory_usage_bytes / memory_limit_bytes) * 100 if memory_limit_bytes > 0 else 0
 
         return {
             "cpu_percent": round(cpu_percent, 2),

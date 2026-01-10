@@ -39,10 +39,20 @@ def test_create_terminal():
     response = requests.post(f"{API_BASE}/api/v1/terminals", json={})
     assert response.status_code == 202
     data = response.json()
-    assert "id" in data
-    assert "status" in data
-    assert "expires_at" in data
-    assert data["status"] in ["pending", "starting"]
+    
+    terminal_id = data.get("id")
+
+    try:
+        assert "id" in data
+        assert "status" in data
+        assert "expires_at" in data
+        assert data["status"] in ["pending", "starting"]
+    finally:
+        if terminal_id:
+            try:
+                requests.delete(f"{API_BASE}/api/v1/terminals/{terminal_id}")
+            except Exception:
+                pass  # Ignore cleanup errors
 
 
 @pytest.fixture

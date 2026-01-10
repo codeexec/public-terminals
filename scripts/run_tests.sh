@@ -141,7 +141,7 @@ elif [ "$MODE" = "integration" ]; then
     PYTEST_CMD="$PYTEST_CMD -m integration"
 else
     echo -e "${YELLOW}Running all tests${NC}"
-    PYTEST_CMD="$PYTEST_CMD tests/ terminal-container/container_tests/"
+    PYTEST_CMD="$PYTEST_CMD tests/ terminal-container/"
 fi
 
 echo ""
