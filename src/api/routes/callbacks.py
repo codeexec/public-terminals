@@ -1,28 +1,71 @@
 """
 API Callback Routes
 Endpoints for containers to report back status and tunnel URLs
+
+SECURITY: All endpoints require callback authentication via HMAC token
 """
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from src.database.session import get_db
 from src.database.models import Terminal, TerminalStatus
 from src.api.schemas import TerminalCallbackRequest
+from src.auth.callback_auth import verify_callback_token, extract_bearer_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/callbacks", tags=["callbacks"])
 
 
+def verify_callback_authentication(
+    callback: TerminalCallbackRequest, authorization: Optional[str] = Header(None)
+):
+    """
+    Verify callback authentication token.
+
+    Args:
+        callback: The callback request containing terminal_id
+        authorization: The Authorization header
+
+    Raises:
+        HTTPException: If authentication fails
+    """
+    token = extract_bearer_token(authorization)
+
+    if not token:
+        logger.warning(f"Callback for {callback.terminal_id} missing auth token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not verify_callback_token(callback.terminal_id, token):
+        logger.warning(f"Callback for {callback.terminal_id} has invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid callback token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 @router.post("/tunnel", status_code=status.HTTP_200_OK)
 async def report_tunnel_url(
-    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report their tunnel URL
     Called by the container's entrypoint script when tunnel is established
+
+    Requires: Valid callback authentication token
     """
+    # Verify authentication
+    verify_callback_authentication(callback, authorization)
+
     logger.info(f"Received tunnel callback for terminal {callback.terminal_id}")
 
     # Find the terminal
@@ -55,12 +98,19 @@ async def report_tunnel_url(
 
 @router.post("/status", status_code=status.HTTP_200_OK)
 async def report_status(
-    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report their status
     Can be used to report errors or status changes
+
+    Requires: Valid callback authentication token
     """
+    # Verify authentication
+    verify_callback_authentication(callback, authorization)
+
     logger.info(
         f"Received status callback for terminal {callback.terminal_id}: {callback.status}"
     )
@@ -97,12 +147,19 @@ async def report_status(
 
 @router.post("/health", status_code=status.HTTP_200_OK)
 async def container_health_check(
-    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Health check endpoint for containers to ping
     Containers can periodically call this to signal they're still alive
+
+    Requires: Valid callback authentication token
     """
+    # Verify authentication
+    verify_callback_authentication(callback, authorization)
+
     # Find the terminal
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
 
@@ -122,12 +179,19 @@ async def container_health_check(
 
 @router.post("/stats", status_code=status.HTTP_200_OK)
 async def report_stats(
-    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report their resource usage statistics
     Containers call this periodically (every 30 seconds) to push CPU and memory stats
+
+    Requires: Valid callback authentication token
     """
+    # Verify authentication
+    verify_callback_authentication(callback, authorization)
+
     # Find the terminal
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
 
@@ -168,13 +232,20 @@ async def report_stats(
 
 @router.post("/idle", status_code=status.HTTP_200_OK)
 async def report_idle_shutdown(
-    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+    callback: TerminalCallbackRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report that they are idle and should be shut down
     Called by the idle monitor when no user is connected and no commands are running
     for the configured idle timeout period
+
+    Requires: Valid callback authentication token
     """
+    # Verify authentication
+    verify_callback_authentication(callback, authorization)
+
     logger.info(
         f"Received idle shutdown request for terminal {callback.terminal_id}: {callback.error_message}"
     )

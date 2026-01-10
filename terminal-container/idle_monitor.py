@@ -23,11 +23,13 @@ class IdleMonitor:
         self,
         terminal_id: str,
         api_callback_url: str,
+        callback_token: str,
         idle_timeout_seconds: int,
         check_interval_seconds: int = 60,
     ):
         self.terminal_id = terminal_id
         self.api_callback_url = api_callback_url
+        self.callback_token = callback_token
         self.idle_timeout_seconds = idle_timeout_seconds
         self.check_interval_seconds = check_interval_seconds
         self.last_activity_time = datetime.now()
@@ -108,13 +110,18 @@ class IdleMonitor:
                 "message": f"Terminal idle for {idle_minutes} minutes ({self.idle_timeout_seconds} seconds)",
             }
 
+            headers = {
+                "Authorization": f"Bearer {self.callback_token}",
+                "Content-Type": "application/json",
+            }
+
             logger.info(
                 f"Reporting idle shutdown for terminal {self.terminal_id} "
                 f"(idle for {idle_minutes}+ minutes / {self.idle_timeout_seconds}+ seconds)"
             )
 
             with httpx.Client(timeout=10.0) as client:
-                response = client.post(url, json=payload)
+                response = client.post(url, json=payload, headers=headers)
 
                 if response.status_code == 200:
                     logger.info("Idle shutdown reported successfully to API")
@@ -191,16 +198,21 @@ def main():
     """Main entry point"""
     terminal_id = os.environ.get("TERMINAL_ID")
     api_callback_url = os.environ.get("API_CALLBACK_URL")
+    callback_token = os.environ.get("CALLBACK_TOKEN")
     idle_timeout_seconds = int(os.environ.get("TERMINAL_IDLE_TIMEOUT_SECONDS", "3600"))
     check_interval_seconds = int(os.environ.get("IDLE_CHECK_INTERVAL_SECONDS", "60"))
 
-    if not terminal_id or not api_callback_url:
-        logger.error("Missing TERMINAL_ID or API_CALLBACK_URL environment variables")
+    if not terminal_id or not api_callback_url or not callback_token:
+        logger.error(
+            "Missing required environment variables: "
+            "TERMINAL_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
+        )
         sys.exit(1)
 
     monitor = IdleMonitor(
         terminal_id=terminal_id,
         api_callback_url=api_callback_url,
+        callback_token=callback_token,
         idle_timeout_seconds=idle_timeout_seconds,
         check_interval_seconds=check_interval_seconds,
     )
