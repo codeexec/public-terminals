@@ -82,6 +82,16 @@ main() {
         log "Stats reporter started (PID: $stats_pid)"
     fi
 
+    # Start Idle Monitor
+    if [[ -n "${API_CALLBACK_URL:-}" ]]; then
+        local timeout_seconds="${TERMINAL_IDLE_TIMEOUT_SECONDS:-3600}"
+        local timeout_minutes=$((timeout_seconds / 60))
+        log "Starting idle monitor (timeout: ${timeout_minutes} minutes / ${timeout_seconds} seconds)..."
+        nohup python /app/idle_monitor.py > /tmp/idle_monitor.log 2>&1 &
+        local idle_pid=$!
+        log "Idle monitor started (PID: $idle_pid)"
+    fi
+
     # Start Localtunnel
     local lt_cmd="lt --port $PORT"
     [[ -n "${LOCALTUNNEL_HOST:-}" ]] && lt_cmd+=" --host $LOCALTUNNEL_HOST"

@@ -156,12 +156,86 @@ async def report_stats(
             f"CPU={callback.cpu_percent}%, MEM={callback.memory_mb}MB"
         )
 
-    # Track activity for idle timeout detection
-    terminal.set_last_activity()
-    db.commit()
+    # DO NOT track activity here - stats reporting doesn't mean user activity
+    # Activity tracking is now handled by the idle monitor in the container
 
     return {
         "status": "success",
         "terminal_id": terminal.id,
         "message": "Stats updated successfully",
     }
+
+
+@router.post("/idle", status_code=status.HTTP_200_OK)
+async def report_idle_shutdown(
+    callback: TerminalCallbackRequest, db: Session = Depends(get_db)
+):
+    """
+    Callback endpoint for containers to report that they are idle and should be shut down
+    Called by the idle monitor when no user is connected and no commands are running
+    for the configured idle timeout period
+    """
+    logger.info(
+        f"Received idle shutdown request for terminal {callback.terminal_id}: {callback.error_message}"
+    )
+
+    # Find the terminal
+    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+
+    if not terminal:
+        logger.error(f"Terminal {callback.terminal_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Terminal {callback.terminal_id} not found",
+        )
+
+    # Check if terminal is already stopped or being deleted
+    if terminal.status in [
+        TerminalStatus.STOPPED,
+        TerminalStatus.EXPIRED,
+        TerminalStatus.FAILED,
+    ]:
+        logger.info(
+            f"Terminal {callback.terminal_id} already in terminal state: {terminal.status}"
+        )
+        return {
+            "status": "success",
+            "terminal_id": terminal.id,
+            "message": f"Terminal already {terminal.status}",
+        }
+
+    # Stop the container due to inactivity
+    logger.info(
+        f"Stopping terminal {callback.terminal_id} due to inactivity: {callback.error_message}"
+    )
+
+    # Import here to avoid circular dependency
+    from src.services.container_service import get_container_service
+
+    container_service = get_container_service()
+
+    try:
+        # Stop the container
+        if terminal.container_id:
+            await container_service.stop_terminal_container(terminal.container_id)
+
+        # Update terminal status to STOPPED (not deleted, so it can be restarted if needed)
+        terminal.status = TerminalStatus.STOPPED
+        db.commit()
+
+        logger.info(
+            f"Successfully stopped idle terminal {callback.terminal_id} (container: {terminal.container_id})"
+        )
+
+        return {
+            "status": "success",
+            "terminal_id": terminal.id,
+            "message": "Terminal stopped due to inactivity",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to stop idle terminal {callback.terminal_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to stop terminal: {str(e)}",
+        )

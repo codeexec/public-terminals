@@ -1,5 +1,6 @@
 # Troubleshooting DB
 
+List all terminals by status
 
 ```
 PYTHONPATH=. python3 scripts/db_query.py "SELECT status, count(*) FROM terminals GROUP BY status"

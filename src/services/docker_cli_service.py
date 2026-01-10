@@ -160,6 +160,8 @@ class DockerCLIService(ContainerServiceInterface):
                     f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
                     "-e",
                     f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
+                    "-e",
+                    f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.TERMINAL_IDLE_TIMEOUT_SECONDS}",
                     "--label",
                     "app=terminal-server",
                     "--label",

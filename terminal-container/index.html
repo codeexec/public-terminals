@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <style>
         body {
             margin: 0;
@@ -20,12 +21,31 @@
             border-bottom: 1px solid #3e3e42;
             font-size: 14px;
             flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title {
+            font-weight: bold;
+            color: #fff;
         }
         #terminal {
             flex: 1;
             padding: 10px;
             box-sizing: border-box;
             overflow: hidden;
+            touch-action: auto; /* Allow touch for selection */
+        }
+        
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            .header {
+                padding: 8px;
+            }
+            .header-title {
+                font-size: 12px;
+                margin-right: 5px;
+            }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
@@ -33,13 +53,17 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
 </head>
 <body>
-    <div class="header">Terminal Session - Connected</div>
+    <div class="header">
+        <div class="header-title">Terminal Session</div>
+    </div>
     <div id="terminal"></div>
     <script>
         const term = new Terminal({
             cursorBlink: true,
             fontSize: 14,
             scrollback: 10000,
+            screenReaderMode: true, // Enable text selection by default
+            fontFamily: 'Courier New, monospace',
             theme: {
                 background: '#1e1e1e',
                 foreground: '#d4d4d4'
@@ -66,7 +90,7 @@
         // Send terminal size to backend when it changes
         term.onResize(({ rows, cols }) => {
             console.log(`Terminal resized to ${cols}x${rows}`);
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(['set_size', rows, cols]));
             }
         });

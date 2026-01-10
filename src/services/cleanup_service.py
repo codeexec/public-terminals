@@ -115,13 +115,18 @@ class CleanupService:
                 except Exception as e:
                     logger.error(f"Failed to cleanup stuck terminal {terminal.id}: {e}")
 
-    async def cleanup_idle_terminals(self, idle_timeout_minutes: int = 60):
+    async def cleanup_idle_terminals(self, idle_timeout_seconds: int = 3600):
         """
-        Find and stop all idle terminals (no activity for N minutes)
+        Find and stop all idle terminals (no activity for N seconds)
         This helps free resources while keeping terminal record for restart
+
+        NOTE: This method is deprecated in favor of container-side idle detection.
+        Containers now report idle status directly to the API via the idle monitor.
+        This method is kept for backwards compatibility.
         """
+        idle_timeout_minutes = idle_timeout_seconds // 60
         logger.info(
-            f"Starting cleanup of idle terminals (timeout: {idle_timeout_minutes} minutes)"
+            f"Starting cleanup of idle terminals (timeout: {idle_timeout_minutes} minutes / {idle_timeout_seconds} seconds)"
         )
 
         with get_db_context() as db:
@@ -185,14 +190,20 @@ try:
 
     @shared_task
     def run_idle_timeout_task():
-        """Celery task to check for idle terminals"""
+        """
+        Celery task to check for idle terminals
+
+        NOTE: This task is deprecated in favor of container-side idle detection.
+        Containers now report idle status directly to the API via the idle monitor.
+        This task is kept for backwards compatibility.
+        """
         import asyncio
         from src.config import settings
 
         cleanup_service = CleanupService()
         asyncio.run(
             cleanup_service.cleanup_idle_terminals(
-                settings.TERMINAL_IDLE_TIMEOUT_MINUTES
+                settings.TERMINAL_IDLE_TIMEOUT_SECONDS
             )
         )
 

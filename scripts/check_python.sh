@@ -12,6 +12,13 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Checking Python environment...${NC}"
 
+# Parse arguments
+FIX_MODE=false
+if [[ "$1" == "--fix" ]]; then
+    FIX_MODE=true
+    echo -e "${YELLOW}Fix mode enabled.${NC}"
+fi
+
 # Check if tools are installed
 if ! command -v ruff &> /dev/null; then
     echo -e "${RED}Error: 'ruff' is not installed.${NC}"
@@ -30,23 +37,33 @@ echo ""
 
 # 1. Formatting Check (Black/Isort equivalent via Ruff)
 echo -e "${YELLOW}1. Checking Code Formatting (ruff format)...${NC}"
-if ruff format --check $TARGETS; then
-    echo -e "${GREEN}✓ Formatting checks passed.${NC}"
+if [ "$FIX_MODE" = true ]; then
+    ruff format $TARGETS
+    echo -e "${GREEN}✓ Formatting applied.${NC}"
 else
-    echo -e "${RED}✗ Formatting checks failed.${NC}"
-    echo "Run 'ruff format .' to fix."
-    EXIT_CODE=1
+    if ruff format --check $TARGETS; then
+        echo -e "${GREEN}✓ Formatting checks passed.${NC}"
+    else
+        echo -e "${RED}✗ Formatting checks failed.${NC}"
+        echo "Run '$0 --fix' to fix."
+        EXIT_CODE=1
+    fi
 fi
 echo ""
 
 # 2. Linting (Flake8 equivalent via Ruff)
 echo -e "${YELLOW}2. Running Linter (ruff check)...${NC}"
-if ruff check $TARGETS; then
-    echo -e "${GREEN}✓ Linting checks passed.${NC}"
+if [ "$FIX_MODE" = true ]; then
+    ruff check --fix $TARGETS
+    echo -e "${GREEN}✓ Linting fixes applied.${NC}"
 else
-    echo -e "${RED}✗ Linting checks failed.${NC}"
-    echo "Run 'ruff check --fix .' to attempt automatic fixes."
-    EXIT_CODE=1
+    if ruff check $TARGETS; then
+        echo -e "${GREEN}✓ Linting checks passed.${NC}"
+    else
+        echo -e "${RED}✗ Linting checks failed.${NC}"
+        echo "Run '$0 --fix' to attempt automatic fixes."
+        EXIT_CODE=1
+    fi
 fi
 echo ""
 

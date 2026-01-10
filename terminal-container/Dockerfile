@@ -37,8 +37,9 @@ RUN echo "/etc/motd.sh" >> /root/.bashrc
 WORKDIR /app
 COPY terminado_server.py .
 COPY stats_reporter.py .
+COPY idle_monitor.py .
 COPY index.html .
-RUN chmod +x stats_reporter.py
+RUN chmod +x stats_reporter.py idle_monitor.py
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh

@@ -5,6 +5,7 @@ from src.api.routes.terminals import create_terminal, TerminalStatus
 from src.config import settings
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_create_terminal_limit_exceeded_db():
     """Test that create_terminal raises 503 if DB count exceeds limit"""
@@ -39,6 +40,7 @@ async def test_create_terminal_limit_exceeded_db():
         assert "active terminals" in exc_info.value.detail
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_create_terminal_limit_exceeded_real():
     """Test that create_terminal raises 503 if real container count exceeds limit"""
@@ -75,6 +77,7 @@ async def test_create_terminal_limit_exceeded_real():
         assert "Server capacity reached" in exc_info.value.detail
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_create_terminal_success():
     """Test that create_terminal succeeds if under limit"""

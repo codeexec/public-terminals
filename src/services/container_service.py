@@ -115,6 +115,7 @@ class DockerContainerService(ContainerServiceInterface):
                 f"TERMINAL_ID={terminal_id}",
                 f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
                 f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
+                f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.TERMINAL_IDLE_TIMEOUT_SECONDS}",
             ]
 
             # Resource limits
@@ -344,6 +345,10 @@ class KubernetesContainerService(ContainerServiceInterface):
                             ),
                             client.V1EnvVar(
                                 name="LOCALTUNNEL_HOST", value=settings.LOCALTUNNEL_HOST
+                            ),
+                            client.V1EnvVar(
+                                name="TERMINAL_IDLE_TIMEOUT_SECONDS",
+                                value=str(settings.TERMINAL_IDLE_TIMEOUT_SECONDS),
                             ),
                         ],
                         ports=[client.V1ContainerPort(container_port=8888)],

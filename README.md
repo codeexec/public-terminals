@@ -1,7 +1,10 @@
 # Terminal Server
 
 A cloud-based terminal provisioning system that provides on-demand terminal access via web browsers using Terminado and localtunnel.
-**Demo:** https://terminal.newsml.io
+
+## Demo
+
+https://terminal.newsml.io
 
 ## Quick Start
 

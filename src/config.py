@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     def ensure_jwt_secret(cls, v: str) -> str:
         if not v:
             import secrets
+
             return secrets.token_urlsafe(32)
         return v
 
@@ -60,9 +61,24 @@ class Settings(BaseSettings):
     CONTAINER_MEMORY_LIMIT: str = "1g"
     CONTAINER_CPU_LIMIT: float = 1.0
 
-    TERMINAL_IDLE_TIMEOUT_MINUTES: int = 60
+    TERMINAL_IDLE_TIMEOUT_SECONDS: int = 3600  # Default: 1 hour
     TERMINAL_IMAGE: str = "terminal-server:latest"
     TERMINAL_TTL_HOURS: int = 24
+
+    @field_validator("TERMINAL_IDLE_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_idle_timeout(cls, v: int) -> int:
+        min_timeout = 600  # 10 minutes
+        max_timeout = 86400  # 24 hours
+        if v < min_timeout:
+            raise ValueError(
+                f"TERMINAL_IDLE_TIMEOUT_SECONDS must be at least {min_timeout} seconds (10 minutes)"
+            )
+        if v > max_timeout:
+            raise ValueError(
+                f"TERMINAL_IDLE_TIMEOUT_SECONDS must be at most {max_timeout} seconds (24 hours)"
+            )
+        return v
 
     # Enable gVisor for enhanced container isolation (requires runsc runtime)
     USE_GVISOR: bool = False
