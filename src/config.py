@@ -8,10 +8,6 @@ from typing import Literal
 
 
 class Settings(BaseSettings):
-    # ========================================
-    # Settings in alphabetical order
-    # ========================================
-
     ADMIN_PASSWORD: str = "changeme"
     ADMIN_USERNAME: str = "admin"
 
