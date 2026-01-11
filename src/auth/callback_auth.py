@@ -25,8 +25,8 @@ def generate_callback_token(terminal_id: str) -> str:
     Returns:
         Hexadecimal HMAC token
     """
-    message = f"callback:{terminal_id}".encode('utf-8')
-    secret = settings.JWT_SECRET_KEY.encode('utf-8')
+    message = f"callback:{terminal_id}".encode("utf-8")
+    secret = settings.JWT_SECRET_KEY.encode("utf-8")
 
     token = hmac.new(secret, message, hashlib.sha256).hexdigest()
     return token
@@ -68,7 +68,7 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
         return None
 
     parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != 'bearer':
+    if len(parts) != 2 or parts[0].lower() != "bearer":
         return None
 
     return parts[1]

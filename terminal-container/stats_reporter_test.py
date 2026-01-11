@@ -100,11 +100,12 @@ class TestStatsReporter:
 
         stats = {"cpu_percent": 10.0, "memory_mb": 100.0, "memory_percent": 50.0}
 
-        assert send_stats("test-term", stats, "http://test-api") is True
+        assert send_stats("test-term", stats, "http://test-api", "test-token") is True
 
         args, kwargs = mock_client.post.call_args
         assert kwargs["json"]["terminal_id"] == "test-term"
         assert kwargs["json"]["cpu_percent"] == 10.0
+        assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
     @patch("httpx.Client")
     def test_send_stats_failure(self, mock_client_cls):
@@ -114,4 +115,4 @@ class TestStatsReporter:
 
         stats = {"cpu_percent": 10.0, "memory_mb": 100.0, "memory_percent": 50.0}
 
-        assert send_stats("test-term", stats, "http://test-api") is False
+        assert send_stats("test-term", stats, "http://test-api", "test-token") is False

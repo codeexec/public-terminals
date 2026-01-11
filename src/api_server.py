@@ -27,7 +27,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         if request.url.scheme == "https":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' cdn.jsdelivr.net; "
@@ -75,9 +77,7 @@ def create_lifespan(logger):
                 f"SECURITY ERROR: ADMIN_PASSWORD is too short ({len(settings.ADMIN_PASSWORD)} characters). "
                 "Minimum length is 12 characters."
             )
-            raise ValueError(
-                "Admin password must be at least 12 characters long."
-            )
+            raise ValueError("Admin password must be at least 12 characters long.")
 
         try:
             init_db()
@@ -121,7 +121,11 @@ def create_app():
         allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],  # Only needed methods
-        allow_headers=["Content-Type", "Authorization", "X-Guest-ID"],  # Only needed headers
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-Guest-ID",
+        ],  # Only needed headers
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 

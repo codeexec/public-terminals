@@ -15,6 +15,7 @@ class TestIdleMonitor:
         return IdleMonitor(
             terminal_id="test-term",
             api_callback_url="http://test-api",
+            callback_token="test-token",
             idle_timeout_seconds=3600,
             check_interval_seconds=60,
         )
@@ -108,6 +109,7 @@ class TestIdleMonitor:
         args, kwargs = mock_client.post.call_args
         assert kwargs["json"]["terminal_id"] == "test-term"
         assert kwargs["json"]["idle_seconds"] == 3600
+        assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
     @patch("httpx.Client")
     def test_report_idle_shutdown_failure(self, mock_client_cls, monitor):

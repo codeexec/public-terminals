@@ -52,21 +52,21 @@ class TerminalCallbackRequest(BaseModel):
     memory_mb: Optional[float] = Field(None, ge=0, le=100000)  # Max 100GB
     memory_percent: Optional[float] = Field(None, ge=0, le=100)
 
-    @field_validator('tunnel_url')
+    @field_validator("tunnel_url")
     @classmethod
     def validate_tunnel_url(cls, v):
         if v is not None and v:
             # Validate URL format and protocol
-            if not re.match(r'^https?://', v):
-                raise ValueError('tunnel_url must use http or https protocol')
+            if not re.match(r"^https?://", v):
+                raise ValueError("tunnel_url must use http or https protocol")
         return v
 
-    @field_validator('terminal_id')
+    @field_validator("terminal_id")
     @classmethod
     def validate_terminal_id(cls, v):
         # Validate terminal_id format (UUID-like or alphanumeric with hyphens)
-        if not re.match(r'^[a-zA-Z0-9-]+$', v):
-            raise ValueError('terminal_id contains invalid characters')
+        if not re.match(r"^[a-zA-Z0-9-]+$", v):
+            raise ValueError("terminal_id contains invalid characters")
         return v
 
 

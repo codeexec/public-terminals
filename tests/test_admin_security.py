@@ -7,26 +7,28 @@ from fastapi import HTTPException
 
 
 @pytest.mark.unit
-def test_jwt_secret_generation():
-    """Test that JWT_SECRET_KEY is generated if empty"""
-    # Create settings with empty secret
-    # We need to bypass environment variables potentially setting it
+def test_jwt_secret_missing():
+    """Test that JWT_SECRET_KEY validation fails if empty"""
     with patch.dict("os.environ", {}, clear=True):
-        settings = Settings(JWT_SECRET_KEY="")
-        assert settings.JWT_SECRET_KEY != ""
-        assert len(settings.JWT_SECRET_KEY) > 0
+        with pytest.raises(ValueError) as exc:
+            Settings(JWT_SECRET_KEY="")
+        assert "must be explicitly set" in str(exc.value)
 
-        # Verify it generates different keys for different instances (wait, no, it should be stable per instance)
-        # But if we instantiate it again, it will be different if we use secrets.token_urlsafe inside validator
-        settings_2 = Settings(JWT_SECRET_KEY="")
-        assert settings.JWT_SECRET_KEY != settings_2.JWT_SECRET_KEY
+
+@pytest.mark.unit
+def test_jwt_secret_too_short():
+    """Test that JWT_SECRET_KEY validation fails if too short"""
+    with pytest.raises(ValueError) as exc:
+        Settings(JWT_SECRET_KEY="too-short")
+    assert "is too short" in str(exc.value)
 
 
 @pytest.mark.unit
 def test_jwt_secret_provided():
     """Test that provided JWT_SECRET_KEY is respected"""
-    settings = Settings(JWT_SECRET_KEY="my-secret-key")
-    assert settings.JWT_SECRET_KEY == "my-secret-key"
+    secret = "a" * 32
+    settings = Settings(JWT_SECRET_KEY=secret)
+    assert settings.JWT_SECRET_KEY == secret
 
 
 @pytest.mark.unit
@@ -37,7 +39,7 @@ async def test_admin_login_success():
         mock_settings.ADMIN_USERNAME = "admin"
         mock_settings.ADMIN_PASSWORD = "password"
         # Mock JWT settings
-        mock_settings.JWT_SECRET_KEY = "secret"
+        mock_settings.JWT_SECRET_KEY = "s" * 32
         mock_settings.JWT_ALGORITHM = "HS256"
         mock_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
