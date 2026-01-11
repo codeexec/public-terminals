@@ -11,9 +11,10 @@ log() { echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" >&2; }
 report_error() {
     local msg="$1"
     log "ERROR: $msg"
-    if [[ -n "${API_CALLBACK_URL:-}" && -n "${TERMINAL_ID:-}" ]]; then
+    if [[ -n "${API_CALLBACK_URL:-}" && -n "${TERMINAL_ID:-}" && -n "${CALLBACK_TOKEN:-}" ]]; then
         curl -s -X POST "${API_CALLBACK_URL}/status" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${CALLBACK_TOKEN}" \
             -d "{\"terminal_id\": \"${TERMINAL_ID}\", \"status\": \"failed\", \"error_message\": \"${msg}\"}" || true
     fi
     exit 1
@@ -52,16 +53,17 @@ get_tunnel_url() {
 update_status() {
     local url="$1"
     log "Reporting tunnel URL: $url"
-    
+
     # Update local server
     curl -s -X POST "http://localhost:$PORT/status" \
         -H "Content-Type: application/json" \
         -d "{\"tunnel_url\": \"$url\"}" >/dev/null || log "Warning: Local status update failed"
 
     # Update API
-    if [[ -n "${API_CALLBACK_URL:-}" ]]; then
+    if [[ -n "${API_CALLBACK_URL:-}" && -n "${CALLBACK_TOKEN:-}" ]]; then
         curl -s -X POST "${API_CALLBACK_URL}/tunnel" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${CALLBACK_TOKEN}" \
             -d "{\"terminal_id\": \"$TERMINAL_ID\", \"tunnel_url\": \"$url\"}" >/dev/null || log "Warning: API callback failed"
     fi
 }

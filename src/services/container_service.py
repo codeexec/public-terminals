@@ -10,6 +10,7 @@ from typing import Optional, Dict
 
 from src.config import settings
 from src.services.interfaces import ContainerServiceInterface
+from src.auth.callback_auth import generate_callback_token
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +111,14 @@ class DockerContainerService(ContainerServiceInterface):
         container_name = f"terminal-{terminal_id}"
 
         try:
+            # Generate callback authentication token
+            callback_token = generate_callback_token(terminal_id)
+
             # Environment variables to pass to container
             environment = [
                 f"TERMINAL_ID={terminal_id}",
                 f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
+                f"CALLBACK_TOKEN={callback_token}",
                 f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
                 f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.TERMINAL_IDLE_TIMEOUT_SECONDS}",
             ]
@@ -342,6 +347,10 @@ class KubernetesContainerService(ContainerServiceInterface):
                             client.V1EnvVar(
                                 name="API_CALLBACK_URL",
                                 value=f"{settings.API_BASE_URL}/api/v1/callbacks",
+                            ),
+                            client.V1EnvVar(
+                                name="CALLBACK_TOKEN",
+                                value=generate_callback_token(terminal_id),
                             ),
                             client.V1EnvVar(
                                 name="LOCALTUNNEL_HOST", value=settings.LOCALTUNNEL_HOST

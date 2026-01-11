@@ -37,9 +37,16 @@ class Settings(BaseSettings):
     @classmethod
     def ensure_jwt_secret(cls, v: str) -> str:
         if not v:
-            import secrets
-
-            return secrets.token_urlsafe(32)
+            raise ValueError(
+                "JWT_SECRET_KEY must be explicitly set. "
+                "Generate one using: openssl rand -hex 32"
+            )
+        if len(v) < 32:
+            raise ValueError(
+                f"JWT_SECRET_KEY is too short ({len(v)} characters). "
+                "Minimum length is 32 characters for security. "
+                "Generate one using: openssl rand -hex 32"
+            )
         return v
 
     K8S_IN_CLUSTER: bool = False

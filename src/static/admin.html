@@ -220,6 +220,37 @@
         let autoRefreshInterval = null;
         let statsCache = {}; // Cache for terminal stats
 
+        // Security: HTML escaping function to prevent XSS
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            const str = String(unsafe);
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return str.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // Security: Validate URL to prevent javascript: and data: URLs
+        function isSafeUrl(url) {
+            if (!url) return false;
+            try {
+                const parsed = new URL(url, window.location.origin);
+                return ['http:', 'https:'].includes(parsed.protocol);
+            } catch {
+                return false;
+            }
+        }
+
+        // Security: Sanitize numeric values
+        function sanitizeNumber(value, decimals = 1) {
+            const num = parseFloat(value);
+            return isNaN(num) ? 0 : num.toFixed(decimals);
+        }
+
         // Utility functions
         function timeSince(date) {
             if (!date) return 'N/A';
@@ -273,7 +304,7 @@
             const area = document.getElementById(viewId);
             area.innerHTML = `
                 <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                    ${msg}
+                    ${escapeHtml(msg)}
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             `;
@@ -382,20 +413,22 @@
         function updateTerminalStatsRow(terminalId, stats) {
             // Update cache
             statsCache[terminalId] = stats;
-            
+
             const cell = document.getElementById(`resources-${terminalId}`);
             if (!cell) return;
-            
+
             if (stats.error) {
                 cell.innerHTML = '<span class="text-danger small">Error</span>';
                 return;
             }
 
-            // Compact display
+            // Compact display with sanitized values
+            const cpuPercent = sanitizeNumber(stats.cpu_percent, 1);
+            const memoryMb = Math.round(parseFloat(stats.memory_mb) || 0);
             cell.innerHTML = `
                 <div style="line-height: 1.2; font-size: 0.85rem;">
-                    <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${stats.cpu_percent}%</span>
-                    <span class="text-nowrap"><i class="bi bi-memory"></i> ${Math.round(stats.memory_mb)}MB</span>
+                    <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${cpuPercent}%</span>
+                    <span class="text-nowrap"><i class="bi bi-memory"></i> ${memoryMb}MB</span>
                 </div>
             `;
         }
@@ -464,37 +497,49 @@
             }
 
             tbody.innerHTML = terminals.map(t => {
-                const statusClass = `status-${t.status.toLowerCase()}`;
-                
+                // Sanitize all user-controlled data
+                const terminalId = escapeHtml(t.id);
+                const userId = escapeHtml(t.user_id);
+                const status = escapeHtml(t.status);
+                const containerId = escapeHtml(t.container_id);
+                const tunnelUrl = escapeHtml(t.tunnel_url);
+
+                const statusClass = `status-${status.toLowerCase()}`;
+
                 // Resources: Use cache or loader
                 let resourceHtml;
                 if (statsCache[t.id]) {
                     const stats = statsCache[t.id];
+                    const cpuPercent = sanitizeNumber(stats.cpu_percent, 1);
+                    const memoryMb = Math.round(parseFloat(stats.memory_mb) || 0);
                     resourceHtml = `
-                        <div id="resources-${t.id}" style="line-height: 1.2; font-size: 0.85rem;">
-                            <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${stats.cpu_percent}%</span>
-                            <span class="text-nowrap"><i class="bi bi-memory"></i> ${Math.round(stats.memory_mb)}MB</span>
+                        <div id="resources-${terminalId}" style="line-height: 1.2; font-size: 0.85rem;">
+                            <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${cpuPercent}%</span>
+                            <span class="text-nowrap"><i class="bi bi-memory"></i> ${memoryMb}MB</span>
                         </div>
                     `;
                 } else {
-                    resourceHtml = `<div id="resources-${t.id}" class="text-muted small">
+                    resourceHtml = `<div id="resources-${terminalId}" class="text-muted small">
                         <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
                     </div>`;
                 }
 
-                // User ID display
-                const userIdDisplay = t.user_id 
-                    ? `<code class="text-muted">${t.user_id.substring(0, 8)}...</code>`
+                // User ID display with sanitization
+                const userIdDisplay = t.user_id
+                    ? `<code class="text-muted">${userId.substring(0, 8)}...</code>`
                     : '<span class="badge bg-secondary">Guest</span>';
 
-                // Actions: Restore Open button
+                // Actions: Validate URL and use data attribute for deleteTerminal
+                let openButtonHtml = '';
+                if (t.tunnel_url && isSafeUrl(t.tunnel_url)) {
+                    openButtonHtml = `<a href="${tunnelUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-success me-1" title="Open Terminal">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                    </a>`;
+                }
+
                 const actionsHtml = `
-                    ${t.tunnel_url ? 
-                        `<a href="${t.tunnel_url}" target="_blank" class="btn btn-sm btn-success me-1" title="Open Terminal">
-                            <i class="bi bi-box-arrow-up-right"></i>
-                        </a>` : ''
-                    }
-                    <button onclick="deleteTerminal('${t.id}')" class="btn btn-sm btn-danger" title="Terminate">
+                    ${openButtonHtml}
+                    <button data-terminal-id="${terminalId}" class="btn btn-sm btn-danger delete-terminal-btn" title="Terminate">
                         <i class="bi bi-trash"></i>
                     </button>
                 `;
@@ -502,17 +547,17 @@
                 return `
                     <tr>
                         <td>
-                            <code class="text-light">${t.id.substring(0, 8)}...</code>
+                            <code class="text-light">${terminalId.substring(0, 8)}...</code>
                         </td>
                         <td>${userIdDisplay}</td>
                         <td>
-                            <span class="badge ${statusClass}">${t.status}</span>
+                            <span class="badge ${statusClass}">${status}</span>
                         </td>
                         <td>${timeSince(t.created_at || new Date())}</td>
                         <td>${timeUntil(t.expires_at)}</td>
                         <td>
                             ${t.container_id ?
-                                `<code class="text-info" title="${t.container_id}">${t.container_id.substring(0, 12)}...</code>` :
+                                `<code class="text-info" title="${containerId}">${containerId.substring(0, 12)}...</code>` :
                                 '<span class="text-muted">N/A</span>'
                             }
                         </td>
@@ -523,6 +568,13 @@
                     </tr>
                 `;
             }).join('');
+
+            // Add event delegation for delete buttons to avoid inline onclick
+            document.querySelectorAll('.delete-terminal-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    deleteTerminal(btn.dataset.terminalId);
+                });
+            });
         }
 
         function updateSummaryStats(terminals) {
