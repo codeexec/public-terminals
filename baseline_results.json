@@ -1,0 +1,84 @@
+{
+  "timestamp": "2026-01-11T21:28:30.287051",
+  "iterations": 5,
+  "successful": 0,
+  "failed": 5,
+  "total_startup_time": {
+    "min": null,
+    "max": null,
+    "mean": null,
+    "median": null,
+    "stdev": null,
+    "p95": null,
+    "p99": null
+  },
+  "api_call_time": {
+    "mean": null,
+    "median": null
+  },
+  "container_creation_time": {
+    "mean": null,
+    "median": null
+  },
+  "tunnel_acquisition_time": {
+    "mean": null,
+    "median": null
+  },
+  "raw_results": [
+    {
+      "start_time": 1768166898.219113,
+      "api_call_start": 1768166898.2191153,
+      "api_call_end": null,
+      "container_id": null,
+      "terminal_id": null,
+      "container_created": null,
+      "container_started": null,
+      "tunnel_url_ready": null,
+      "total_time": null
+    },
+    {
+      "start_time": 1768166901.261844,
+      "api_call_start": 1768166901.2618473,
+      "api_call_end": null,
+      "container_id": null,
+      "terminal_id": null,
+      "container_created": null,
+      "container_started": null,
+      "tunnel_url_ready": null,
+      "total_time": null
+    },
+    {
+      "start_time": 1768166904.2687414,
+      "api_call_start": 1768166904.2687438,
+      "api_call_end": null,
+      "container_id": null,
+      "terminal_id": null,
+      "container_created": null,
+      "container_started": null,
+      "tunnel_url_ready": null,
+      "total_time": null
+    },
+    {
+      "start_time": 1768166907.275892,
+      "api_call_start": 1768166907.275895,
+      "api_call_end": null,
+      "container_id": null,
+      "terminal_id": null,
+      "container_created": null,
+      "container_started": null,
+      "tunnel_url_ready": null,
+      "total_time": null
+    },
+    {
+      "start_time": 1768166910.282988,
+      "api_call_start": 1768166910.282991,
+      "api_call_end": null,
+      "container_id": null,
+      "terminal_id": null,
+      "container_created": null,
+      "container_started": null,
+      "tunnel_url_ready": null,
+      "total_time": null
+    }
+  ]
+}
