@@ -303,7 +303,7 @@
         function showAlert(msg, type, viewId) {
             const area = document.getElementById(viewId);
             area.innerHTML = `
-                <div class="alert alert-${escapeHtml(type)} alert-dismissible fade show" role="alert">
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
                     ${escapeHtml(msg)}
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
