@@ -60,9 +60,6 @@ class TerminalCallbackRequest(BaseModel):
             # Validate URL format and protocol
             if not re.match(r'^https?://', v):
                 raise ValueError('tunnel_url must use http or https protocol')
-            # Additional validation: ensure reasonable URL length and format
-            if len(v) > 512:
-                raise ValueError('tunnel_url is too long (max 512 characters)')
         return v
 
     @field_validator('terminal_id')
