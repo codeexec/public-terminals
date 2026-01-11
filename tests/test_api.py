@@ -39,7 +39,7 @@ def test_create_terminal():
     response = requests.post(f"{API_BASE}/api/v1/terminals", json={})
     assert response.status_code == 202
     data = response.json()
-    
+
     terminal_id = data.get("id")
 
     try:

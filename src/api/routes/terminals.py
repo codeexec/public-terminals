@@ -82,7 +82,9 @@ async def _poll_container_status(
     return False
 
 
-async def _create_terminal_background(terminal_id: str, db: Session):
+async def _create_terminal_background(
+    terminal_id: str, db: Session, restart: bool = False
+):
     """
     Background task to create terminal container
     This runs asynchronously after the API returns
@@ -95,6 +97,17 @@ async def _create_terminal_background(terminal_id: str, db: Session):
         if not terminal:
             logger.error(f"Terminal {terminal_id} not found in background task")
             return
+
+        # Cleanup previous container if restarting
+        if restart:
+            try:
+                container_name = f"terminal-{terminal_id}"
+                logger.info(
+                    f"Cleaning up previous container {container_name} for restart"
+                )
+                await container_service.delete_terminal_container(container_name)
+            except Exception as e:
+                logger.warning(f"Cleanup failed (might be expected): {e}")
 
         # Update status to starting
         terminal.status = TerminalStatus.STARTING
@@ -231,7 +244,9 @@ async def get_terminal(
         db.commit()
 
         # Create new container in background (reuse existing function)
-        background_tasks.add_task(_create_terminal_background, terminal.id, db)
+        background_tasks.add_task(
+            _create_terminal_background, terminal.id, db, restart=True
+        )
 
     return terminal
 
@@ -272,6 +287,48 @@ async def list_terminals(
     return TerminalListResponse(
         terminals=[TerminalResponse.model_validate(t) for t in terminals], total=total
     )
+
+
+@router.post("/{terminal_id}/start", response_model=TerminalResponse)
+async def start_terminal(
+    terminal_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Start a stopped terminal
+    """
+    terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
+
+    if not terminal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Terminal {terminal_id} not found",
+        )
+
+    if terminal.status not in [TerminalStatus.STOPPED, TerminalStatus.FAILED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Terminal is in {terminal.status} state, cannot start. Create a new one or wait.",
+        )
+
+    # Check expiry
+    if terminal.is_expired():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terminal has expired",
+        )
+
+    # Restart logic
+    terminal.status = TerminalStatus.PENDING
+    terminal.error_message = None
+    db.commit()
+
+    background_tasks.add_task(
+        _create_terminal_background, terminal.id, db, restart=True
+    )
+
+    return terminal
 
 
 @router.delete("/{terminal_id}", status_code=status.HTTP_200_OK)

@@ -142,10 +142,10 @@
 
             <!-- Stats Cards -->
             <div class="row mb-4">
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <div class="card text-center">
                         <div class="card-body">
-                            <h5 class="text-muted">Total Terminals</h5>
+                            <h5 class="text-muted">Total</h5>
                             <h2 id="stat-total">0</h2>
                         </div>
                     </div>
@@ -158,11 +158,19 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <div class="card text-center">
                         <div class="card-body">
                             <h5 class="text-warning">Starting</h5>
                             <h2 id="stat-starting">0</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card text-center">
+                        <div class="card-body" style="color: #6c757d;">
+                            <h5>Stopped</h5>
+                            <h2 id="stat-stopped">0</h2>
                         </div>
                     </div>
                 </div>
@@ -400,6 +408,33 @@
             `;
         }
 
+        async function startTerminal(terminalId) {
+            try {
+                // Using public endpoint to start terminal
+                const response = await fetch(`${API_BASE}/terminals/${terminalId}/start`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.status === 401) {
+                    logout();
+                    return;
+                }
+
+                if (response.ok) {
+                    showAlert('Terminal restart initiated', 'success', 'admin-alert-area');
+                    loadTerminals();
+                } else {
+                    const err = await response.json();
+                    showAlert('Failed to start terminal: ' + (err.detail || 'Unknown error'), 'danger', 'admin-alert-area');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'danger', 'admin-alert-area');
+            }
+        }
+
         async function deleteTerminal(terminalId) {
             if (!confirm('Are you sure you want to terminate this terminal?')) return;
 
@@ -490,9 +525,14 @@
                 // Actions: Restore Open button
                 const actionsHtml = `
                     ${t.tunnel_url ? 
-                        `<a href="${t.tunnel_url}" target="_blank" class="btn btn-sm btn-success me-1" title="Open Terminal">
+                        `<a href="${t.tunnel_url}" target="_blank" class="btn btn-sm btn-primary me-1" title="Open Terminal">
                             <i class="bi bi-box-arrow-up-right"></i>
                         </a>` : ''
+                    }
+                    ${t.status === 'stopped' ?
+                        `<button onclick="startTerminal('${t.id}')" class="btn btn-sm btn-success me-1" title="Start Terminal">
+                            <i class="bi bi-play-fill"></i>
+                        </button>` : ''
                     }
                     <button onclick="deleteTerminal('${t.id}')" class="btn btn-sm btn-danger" title="Terminate">
                         <i class="bi bi-trash"></i>
@@ -531,6 +571,8 @@
                 terminals.filter(t => t.status === 'started').length;
             document.getElementById('stat-starting').textContent =
                 terminals.filter(t => ['pending', 'starting'].includes(t.status)).length;
+            document.getElementById('stat-stopped').textContent =
+                terminals.filter(t => t.status === 'stopped').length;
             document.getElementById('stat-failed').textContent =
                 terminals.filter(t => t.status === 'failed').length;
         }

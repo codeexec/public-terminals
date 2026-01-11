@@ -143,6 +143,7 @@ async def get_admin_stats(
     """
     try:
         from src.services.stats_service import stats_service
+        from sqlalchemy import or_, and_
 
         logger.info("Fetching system stats...")
         # 1. Get system stats
@@ -161,18 +162,25 @@ async def get_admin_stats(
         logger.info("Fetching active terminals from DB...")
         # 2. Get active terminals
         try:
+            now = datetime.now(timezone.utc)
             active_terminals = (
                 db.query(Terminal)
                 .filter(
-                    Terminal.status.in_(
-                        [
-                            TerminalStatus.PENDING,
-                            TerminalStatus.STARTING,
-                            TerminalStatus.STARTED,
-                        ]
-                    ),
-                    Terminal.container_id.isnot(None),
                     Terminal.deleted_at.is_(None),
+                    Terminal.container_id.isnot(None),
+                    or_(
+                        Terminal.status.in_(
+                            [
+                                TerminalStatus.PENDING,
+                                TerminalStatus.STARTING,
+                                TerminalStatus.STARTED,
+                            ]
+                        ),
+                        and_(
+                            Terminal.status == TerminalStatus.STOPPED,
+                            Terminal.expires_at > now,
+                        ),
+                    ),
                 )
                 .all()
             )
