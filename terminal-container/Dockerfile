@@ -41,6 +41,9 @@ COPY idle_monitor.py .
 COPY index.html .
 RUN chmod +x stats_reporter.py idle_monitor.py
 
+# Pre-compile Python bytecode for faster startup
+RUN python -m compileall /app
+
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
