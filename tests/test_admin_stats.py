@@ -19,7 +19,12 @@ async def test_get_admin_stats():
     mock_terminal.user_id = "user-1"
     mock_terminal.status = "started"
 
-    mock_db.query.return_value.filter.return_value.all.return_value = [mock_terminal]
+    # Mock the chain: query -> filter -> order_by -> all
+    # Because we added order_by to the production code, we must mock it
+    mock_filter = mock_db.query.return_value.filter.return_value
+    mock_filter.order_by.return_value.all.return_value = [mock_terminal]
+    # Keep this for backward compatibility or if order_by is conditionally skipped (though it isn't here)
+    mock_filter.all.return_value = [mock_terminal]
 
     # Mock stats service
     mock_system_stats = {

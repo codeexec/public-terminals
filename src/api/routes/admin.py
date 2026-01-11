@@ -162,26 +162,10 @@ async def get_admin_stats(
         logger.info("Fetching active terminals from DB...")
         # 2. Get active terminals
         try:
-            now = datetime.now(timezone.utc)
             active_terminals = (
                 db.query(Terminal)
-                .filter(
-                    Terminal.deleted_at.is_(None),
-                    Terminal.container_id.isnot(None),
-                    or_(
-                        Terminal.status.in_(
-                            [
-                                TerminalStatus.PENDING,
-                                TerminalStatus.STARTING,
-                                TerminalStatus.STARTED,
-                            ]
-                        ),
-                        and_(
-                            Terminal.status == TerminalStatus.STOPPED,
-                            Terminal.expires_at > now,
-                        ),
-                    ),
-                )
+                .filter(Terminal.deleted_at.is_(None))
+                .order_by(Terminal.created_at.desc())
                 .all()
             )
             logger.info(f"Found {len(active_terminals)} active terminals")
