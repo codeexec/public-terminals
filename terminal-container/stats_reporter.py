@@ -83,7 +83,7 @@ def collect_stats():
         return None
 
 
-def send_stats(terminal_id, stats, api_callback_url):
+def send_stats(terminal_id, stats, api_callback_url, callback_token):
     """Send statistics to API callback endpoint"""
     try:
         url = f"{api_callback_url}/stats"
@@ -94,8 +94,13 @@ def send_stats(terminal_id, stats, api_callback_url):
             "memory_percent": stats["memory_percent"],
         }
 
+        headers = {
+            "Authorization": f"Bearer {callback_token}",
+            "Content-Type": "application/json",
+        }
+
         with httpx.Client(timeout=5.0) as client:
-            response = client.post(url, json=payload)
+            response = client.post(url, json=payload, headers=headers)
 
             if response.status_code == 200:
                 logger.debug(
@@ -116,9 +121,13 @@ def main():
     """Main loop - collect and send stats every 30 seconds"""
     terminal_id = os.environ.get("TERMINAL_ID")
     api_callback_url = os.environ.get("API_CALLBACK_URL")
+    callback_token = os.environ.get("CALLBACK_TOKEN")
 
-    if not terminal_id or not api_callback_url:
-        logger.error("Missing TERMINAL_ID or API_CALLBACK_URL environment variables")
+    if not terminal_id or not api_callback_url or not callback_token:
+        logger.error(
+            "Missing required environment variables: "
+            "TERMINAL_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
+        )
         sys.exit(1)
 
     logger.info(f"Stats reporter started for terminal {terminal_id}")
@@ -132,7 +141,7 @@ def main():
             stats = collect_stats()
 
             if stats:
-                send_stats(terminal_id, stats, api_callback_url)
+                send_stats(terminal_id, stats, api_callback_url, callback_token)
 
             # Wait 30 seconds before next report
             time.sleep(30)
