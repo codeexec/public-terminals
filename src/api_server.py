@@ -30,7 +30,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
+            "script-src 'self' cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
             "font-src 'self' cdn.jsdelivr.net; "
             "img-src 'self' data:; "
