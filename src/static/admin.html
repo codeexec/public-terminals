@@ -414,7 +414,7 @@
             // Update cache
             statsCache[terminalId] = stats;
 
-            const cell = document.getElementById(`resources-${escapeHtml(terminalId)}`);
+            const cell = document.getElementById(`resources-${terminalId}`);
             if (!cell) return;
 
             if (stats.error) {
