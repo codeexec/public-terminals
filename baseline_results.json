@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-01-11T21:28:30.287051",
+  "timestamp": "2026-01-11T21:42:24.209237",
   "iterations": 5,
   "successful": 0,
   "failed": 5,
@@ -13,12 +13,12 @@
     "p99": null
   },
   "api_call_time": {
-    "mean": null,
-    "median": null
+    "mean": 5.605821967124939,
+    "median": 7.436803579330444
   },
   "container_creation_time": {
-    "mean": null,
-    "median": null
+    "mean": 7.203300774097443,
+    "median": 8.081949591636658
   },
   "tunnel_acquisition_time": {
     "mean": null,
@@ -26,52 +26,52 @@
   },
   "raw_results": [
     {
-      "start_time": 1768166898.219113,
-      "api_call_start": 1768166898.2191153,
-      "api_call_end": null,
-      "container_id": null,
-      "terminal_id": null,
-      "container_created": null,
+      "start_time": 1768167228.4096725,
+      "api_call_start": 1768167228.4096746,
+      "api_call_end": 1768167228.486425,
+      "container_id": "ac58fd01bdca86e95b295ece57ee0b4f065e7ca4d35ad6142d2d15b16609fbb6",
+      "terminal_id": "60e07346-4c47-46c1-b1f7-61913c2f90dd",
+      "container_created": 1768167229.0447528,
       "container_started": null,
       "tunnel_url_ready": null,
       "total_time": null
     },
     {
-      "start_time": 1768166901.261844,
-      "api_call_start": 1768166901.2618473,
-      "api_call_end": null,
-      "container_id": null,
-      "terminal_id": null,
-      "container_created": null,
+      "start_time": 1768167351.9706054,
+      "api_call_start": 1768167351.9706097,
+      "api_call_end": 1768167359.4127965,
+      "container_id": "de3ba3ab86e2fd3e2f4de76675283c9590b427316cd4b4fba7fa97005731c8f8",
+      "terminal_id": "3c01ea9d-ebfc-4f8b-89ca-471c1eeaae21",
+      "container_created": 1768167360.0566099,
       "container_started": null,
       "tunnel_url_ready": null,
       "total_time": null
     },
     {
-      "start_time": 1768166904.2687414,
-      "api_call_start": 1768166904.2687438,
-      "api_call_end": null,
-      "container_id": null,
-      "terminal_id": null,
-      "container_created": null,
+      "start_time": 1768167482.4671073,
+      "api_call_start": 1768167482.4671104,
+      "api_call_end": 1768167489.8985307,
+      "container_id": "a57be548296dd9737293d6beff5afdcd75fe933d6b995b073931c0ff2602a44a",
+      "terminal_id": "24dbdf78-6405-492a-b889-f56d423b17ab",
+      "container_created": 1768167494.4813309,
       "container_started": null,
       "tunnel_url_ready": null,
       "total_time": null
     },
     {
-      "start_time": 1768166907.275892,
-      "api_call_start": 1768166907.275895,
-      "api_call_end": null,
-      "container_id": null,
-      "terminal_id": null,
-      "container_created": null,
+      "start_time": 1768167613.3824174,
+      "api_call_start": 1768167613.3824205,
+      "api_call_end": 1768167620.855351,
+      "container_id": "d37317c32e3d910aa605989393c9c185caf0d413511ef9c40ab7357f492efe3a",
+      "terminal_id": "72776ba1-589c-416b-913d-a9ddd91822b5",
+      "container_created": 1768167621.4603121,
       "container_started": null,
       "tunnel_url_ready": null,
       "total_time": null
     },
     {
-      "start_time": 1768166910.282988,
-      "api_call_start": 1768166910.282991,
+      "start_time": 1768167744.2067628,
+      "api_call_start": 1768167744.206766,
       "api_call_end": null,
       "container_id": null,
       "terminal_id": null,

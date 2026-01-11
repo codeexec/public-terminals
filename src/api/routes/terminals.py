@@ -79,7 +79,7 @@ async def _poll_container_status(
                 poll_interval = 1.0
             else:
                 poll_interval = 2.0
-            
+
             await asyncio.sleep(poll_interval)
 
     # Failed to get tunnel URL within timeout
