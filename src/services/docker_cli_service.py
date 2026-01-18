@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from src.config import settings
 from src.services.interfaces import ContainerServiceInterface
+from src.auth.callback_auth import generate_callback_token
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,9 @@ class DockerCLIService(ContainerServiceInterface):
                 logger.warning(f"Failed to create custom resolv.conf: {e}")
                 host_resolv_path = None
 
+        # Generate callback token for this terminal
+        callback_token = generate_callback_token(terminal_id)
+
         try:
             # Build docker run command with port mapping
             # -p 0:8888 maps container port 8888 to a random available host port
@@ -158,6 +162,8 @@ class DockerCLIService(ContainerServiceInterface):
                     f"TERMINAL_ID={terminal_id}",
                     "-e",
                     f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
+                    "-e",
+                    f"CALLBACK_TOKEN={callback_token}",
                     "-e",
                     f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
                     "-e",

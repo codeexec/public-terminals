@@ -159,15 +159,14 @@ async def get_admin_stats(
                 "disk": {"total_gb": 0, "used_gb": 0, "percent": 0},
             }
 
-        logger.info("Fetching active terminals from DB...")
-        # 2. Get active terminals
+        logger.info("Fetching terminals from DB...")
+        # 2. Get all non-deleted terminals (not just ones with container_id)
         try:
             now = datetime.now(timezone.utc)
             active_terminals = (
                 db.query(Terminal)
                 .filter(
                     Terminal.deleted_at.is_(None),
-                    Terminal.container_id.isnot(None),
                     or_(
                         Terminal.status.in_(
                             [
@@ -182,8 +181,8 @@ async def get_admin_stats(
                         ),
                     ),
                 )
-                .all()
-            )
+                .order_by(Terminal.created_at.desc())
+            ).all()
             logger.info(f"Found {len(active_terminals)} active terminals")
         except Exception as e:
             logger.error(f"Database query failed: {e}")

@@ -45,7 +45,10 @@ async def test_admin_stats_includes_stopped_active_terminals():
     # Instead, let's verify the code structure effectively asks for them.
 
     # We will simulate the DB returning the list that matches the filter.
-    mock_db.query.return_value.filter.return_value.all.return_value = [term1, term2]
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        term1,
+        term2,
+    ]
 
     with patch(
         "src.services.stats_service.stats_service.get_system_stats", return_value={}

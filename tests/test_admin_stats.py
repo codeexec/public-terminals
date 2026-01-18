@@ -19,7 +19,9 @@ async def test_get_admin_stats():
     mock_terminal.user_id = "user-1"
     mock_terminal.status = "started"
 
-    mock_db.query.return_value.filter.return_value.all.return_value = [mock_terminal]
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        mock_terminal
+    ]
 
     # Mock stats service
     mock_system_stats = {
@@ -74,7 +76,7 @@ async def test_get_admin_stats_excludes_deleted():
     # To truly test the filter, we'd need an integration test with a real DB or
     # inspect the calls to filter().
 
-    mock_db.query.return_value.filter.return_value.all.return_value = []
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
 
     with patch(
         "src.services.stats_service.stats_service.get_system_stats", return_value={}
