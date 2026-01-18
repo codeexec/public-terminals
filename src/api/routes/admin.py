@@ -143,7 +143,6 @@ async def get_admin_stats(
     """
     try:
         from src.services.stats_service import stats_service
-        from sqlalchemy import or_, and_
 
         logger.info("Fetching system stats...")
         # 1. Get system stats
@@ -162,27 +161,12 @@ async def get_admin_stats(
         logger.info("Fetching terminals from DB...")
         # 2. Get all non-deleted terminals (not just ones with container_id)
         try:
-            now = datetime.now(timezone.utc)
             active_terminals = (
                 db.query(Terminal)
-                .filter(
-                    Terminal.deleted_at.is_(None),
-                    or_(
-                        Terminal.status.in_(
-                            [
-                                TerminalStatus.PENDING,
-                                TerminalStatus.STARTING,
-                                TerminalStatus.STARTED,
-                            ]
-                        ),
-                        and_(
-                            Terminal.status == TerminalStatus.STOPPED,
-                            Terminal.expires_at > now,
-                        ),
-                    ),
-                )
+                .filter(Terminal.deleted_at.is_(None))
                 .order_by(Terminal.created_at.desc())
-            ).all()
+                .all()
+            )
             logger.info(f"Found {len(active_terminals)} active terminals")
         except Exception as e:
             logger.error(f"Database query failed: {e}")

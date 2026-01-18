@@ -71,9 +71,17 @@ update_status() {
 main() {
     log "Starting Terminal Container (ID: ${TERMINAL_ID:-unknown})"
 
-    # Start Terminado
+    # Start Terminado in background
     nohup python /app/terminado_server.py > /tmp/terminado.log 2>&1 &
     local term_pid=$!
+
+    # Start Localtunnel in background immediately
+    local lt_cmd="lt --port $PORT"
+    [[ -n "${LOCALTUNNEL_HOST:-}" ]] && lt_cmd+=" --host $LOCALTUNNEL_HOST"
+    nohup $lt_cmd > "$TUNNEL_FILE" 2>&1 &
+    local lt_pid=$!
+
+    # Wait for Terminado to be ready (non-blocking for LT)
     wait_for_ready "http://localhost:$PORT/health" "Terminado"
 
     # Start Stats Reporter
@@ -94,13 +102,7 @@ main() {
         log "Idle monitor started (PID: $idle_pid)"
     fi
 
-    # Start Localtunnel
-    local lt_cmd="lt --port $PORT"
-    [[ -n "${LOCALTUNNEL_HOST:-}" ]] && lt_cmd+=" --host $LOCALTUNNEL_HOST"
-    nohup $lt_cmd > "$TUNNEL_FILE" 2>&1 &
-    local lt_pid=$!
-
-    # Get and report URL
+    # Get and report URL (LT might have finished handshake while Terminado was booting)
     local tunnel_url
     tunnel_url=$(get_tunnel_url)
     update_status "$tunnel_url"

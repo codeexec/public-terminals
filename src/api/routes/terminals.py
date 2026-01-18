@@ -25,12 +25,11 @@ router = APIRouter(prefix="/terminals", tags=["terminals"])
 
 
 async def _poll_container_status(
-    terminal_id: str, container_name: str, db: Session, max_attempts: int = 60
+    terminal_id: str, container_name: str, db: Session, max_attempts: int = 80
 ):
     """
     Poll the container's HTTP status endpoint to get tunnel URL
-    Polls every 2 seconds for up to 2 minutes
-    Uses container name to access via Docker network
+    Uses progressive backoff for faster initial detection
     """
     status_url = f"http://{container_name}:8888/status"
 
@@ -73,7 +72,15 @@ async def _poll_container_status(
                 )
 
             # Wait before next attempt
-            await asyncio.sleep(2)
+            # Progressive backoff: faster polling at start to reduce perceived latency
+            if attempt < 10:
+                poll_interval = 0.5
+            elif attempt < 20:
+                poll_interval = 1.0
+            else:
+                poll_interval = 2.0
+
+            await asyncio.sleep(poll_interval)
 
     # Failed to get tunnel URL within timeout
     logger.error(
