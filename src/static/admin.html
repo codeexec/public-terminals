@@ -535,10 +535,14 @@
                 // Sanitize all user-controlled data
                 const terminalId = escapeHtml(t.id);
                 const userId = escapeHtml(t.user_id);
-                const status = escapeHtml(t.status);
                 const containerId = escapeHtml(t.container_id);
                 const tunnelUrl = escapeHtml(t.tunnel_url);
 
+                // Check if terminal is expired
+                const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
+
+                // Override status to 'expired' if terminal is expired
+                const status = isExpired ? 'expired' : escapeHtml(t.status);
                 const statusClass = `status-${status.toLowerCase()}`;
 
                 // Resources: Use cache or loader
@@ -566,22 +570,34 @@
 
                 // Actions: Validate URL and use data attribute for deleteTerminal
                 let actionsHtml = '';
-                
-                if (t.tunnel_url && isSafeUrl(t.tunnel_url)) {
-                    actionsHtml += `<a href="${tunnelUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary me-1" title="Open Terminal">
-                        <i class="bi bi-box-arrow-up-right"></i>
-                    </a>`;
-                }
-                
-                if (t.status === 'stopped') {
-                    actionsHtml += `<button onclick="startTerminal('${terminalId}')" class="btn btn-sm btn-success me-1" title="Start Terminal">
-                        <i class="bi bi-play-fill"></i>
-                    </button>`;
-                }
 
-                actionsHtml += `<button data-terminal-id="${terminalId}" class="btn btn-sm btn-danger delete-terminal-btn" title="Terminate">
-                    <i class="bi bi-trash"></i>
-                </button>`;
+                // For expired terminals, only show delete button for cleanup
+                if (isExpired) {
+                    actionsHtml += `<button data-terminal-id="${terminalId}" class="btn btn-sm btn-outline-danger delete-terminal-btn" title="Delete">
+                        <i class="bi bi-trash"></i>
+                    </button>`;
+                } else {
+                    // Open Terminal button - only for started terminals with tunnel URL
+                    if (t.tunnel_url && isSafeUrl(t.tunnel_url) && t.status === 'started') {
+                        actionsHtml += `<a href="${tunnelUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary me-1" title="Open Terminal">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>`;
+                    }
+
+                    // Start button - only for stopped terminals that are not expired
+                    if (t.status === 'stopped') {
+                        actionsHtml += `<button onclick="startTerminal('${terminalId}')" class="btn btn-sm btn-success me-1" title="Start Terminal">
+                            <i class="bi bi-play-fill"></i>
+                        </button>`;
+                    }
+
+                    // Stop button - only for started terminals that are not expired
+                    if (t.status === 'started') {
+                        actionsHtml += `<button data-terminal-id="${terminalId}" class="btn btn-sm btn-warning delete-terminal-btn" title="Stop Terminal">
+                            <i class="bi bi-stop-fill"></i>
+                        </button>`;
+                    }
+                }
 
                 return `
                     <tr>
