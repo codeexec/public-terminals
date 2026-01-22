@@ -18,6 +18,7 @@ from src.api.schemas import (
     OperationResponse,
 )
 from src.services.container_service import get_container_service
+from src.services.warm_pool_service import get_warm_pool_service
 from src.config import settings
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,9 @@ async def create_terminal(
     Create a new terminal instance
     Returns 202 Accepted as this is a long-running operation
     The container creation happens in the background
+
+    OPTIMIZATION: First tries to claim a pre-warmed container for instant startup.
+    Falls back to background container creation if no warm containers available.
     """
     # Check max containers limit
     # 1. Check DB count
@@ -222,7 +226,31 @@ async def create_terminal(
 
     logger.info(f"Created terminal record: {terminal.id}")
 
-    # Trigger background container creation
+    # OPTIMIZATION: Try to claim a pre-warmed container first
+    warm_pool = get_warm_pool_service()
+    if settings.WARM_POOL_ENABLED:
+        try:
+            warm_container = await warm_pool.claim_container()
+            if warm_container and warm_container.tunnel_url:
+                # Instant startup! Transfer warm container to terminal
+                terminal.container_id = warm_container.container_id
+                terminal.container_name = warm_container.container_name
+                terminal.host_port = warm_container.host_port
+                terminal.tunnel_url = warm_container.tunnel_url
+                terminal.status = TerminalStatus.STARTED
+
+                db.commit()
+                db.refresh(terminal)
+
+                logger.info(
+                    f"INSTANT STARTUP: Terminal {terminal.id} claimed warm container "
+                    f"{warm_container.warm_id} with tunnel {warm_container.tunnel_url}"
+                )
+                return terminal
+        except Exception as e:
+            logger.warning(f"Failed to claim warm container: {e}")
+
+    # Fallback: Trigger background container creation
     background_tasks.add_task(_create_terminal_background, terminal.id, db)
 
     return terminal

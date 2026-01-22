@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     TERMINAL_IMAGE: str = "terminal-server:latest"
     TERMINAL_TTL_HOURS: int = 24
 
+    # Warm Pool Configuration
+    WARM_POOL_ENABLED: bool = True  # Enable pre-warmed container pool
+    WARM_POOL_SIZE: int = 2  # Number of containers to keep warm
+
     @field_validator("TERMINAL_IDLE_TIMEOUT_SECONDS")
     @classmethod
     def validate_idle_timeout(cls, v: int) -> int:

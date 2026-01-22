@@ -19,6 +19,7 @@ from src.config import settings
 from src.database.models import Terminal, TerminalStatus
 from src.database.session import get_db
 from src.services.container_service import get_container_service
+from src.services.warm_pool_service import get_warm_pool_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -237,3 +238,15 @@ async def get_terminal_stats(
     except Exception as e:
         logger.error(f"Failed to get stats for container {container_id}: {e}")
         return {"cpu_percent": 0, "memory_mb": 0, "memory_percent": 0, "error": str(e)}
+
+
+@router.get("/warm-pool", response_model=Dict)
+async def get_warm_pool_status(
+    current_admin: str = Depends(get_current_admin),
+):
+    """
+    Get the status of the warm container pool.
+    Shows how many pre-warmed containers are available for instant startup.
+    """
+    warm_pool = get_warm_pool_service()
+    return await warm_pool.get_pool_status()

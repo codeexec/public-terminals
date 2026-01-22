@@ -14,6 +14,7 @@ from src.config import settings
 from src.database.session import init_db
 from src.api.routes import terminals, callbacks, admin
 from src.api.schemas import HealthResponse
+from src.services.warm_pool_service import get_warm_pool_service
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -86,7 +87,27 @@ def create_lifespan(logger):
             logger.error(f"Failed to initialize database: {e}")
             raise
 
+        # Start warm pool service if enabled
+        warm_pool = None
+        if settings.WARM_POOL_ENABLED:
+            try:
+                warm_pool = get_warm_pool_service()
+                await warm_pool.start()
+                logger.info(
+                    f"Warm pool service started (size={settings.WARM_POOL_SIZE})"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to start warm pool service: {e}")
+
         yield
+
+        # Stop warm pool service
+        if warm_pool:
+            try:
+                await warm_pool.stop()
+                logger.info("Warm pool service stopped")
+            except Exception as e:
+                logger.warning(f"Error stopping warm pool service: {e}")
 
         logger.info("Shutting down Terminal Server API")
 

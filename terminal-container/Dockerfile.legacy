@@ -1,0 +1,71 @@
+FROM python:3.12-slim
+
+# Install only essential system utilities
+# Removed: dnsutils, net-tools (rarely used)
+# Kept only what's needed for terminal functionality
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    vim \
+    nano \
+    tmux \
+    procps \
+    htop \
+    iputils-ping \
+    netcat-traditional \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Add claude's bin to the PATH
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install Python dependencies first (changes less frequently)
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Install only localtunnel (essential for startup)
+# Claude CLI and Gemini CLI are installed lazily on first use
+RUN npm install -g localtunnel
+
+# Create directory for lazy CLI installation
+RUN mkdir -p /usr/local/share/cli-tools
+
+# Add lazy installation scripts for CLI tools
+COPY install_claude_cli.sh /usr/local/bin/claude-install
+COPY install_gemini_cli.sh /usr/local/bin/gemini-install
+RUN chmod +x /usr/local/bin/claude-install /usr/local/bin/gemini-install
+
+# Add wrapper scripts that auto-install on first use
+RUN echo '#!/bin/bash\nif ! command -v claude &> /dev/null; then\n  echo "Installing Claude CLI (first run)..."\n  /usr/local/bin/claude-install\nfi\nexec /root/.local/bin/claude "$@"' > /usr/local/bin/claude && chmod +x /usr/local/bin/claude
+RUN echo '#!/bin/bash\nif ! command -v gemini &> /dev/null || [ ! -f /usr/local/share/cli-tools/.gemini-installed ]; then\n  echo "Installing Gemini CLI (first run)..."\n  /usr/local/bin/gemini-install\nfi\nexec /usr/local/lib/node_modules/@google/gemini-cli/bin/gemini.js "$@"' > /usr/local/bin/gemini && chmod +x /usr/local/bin/gemini
+
+# Add MOTD
+COPY motd.sh /etc/motd.sh
+RUN chmod +x /etc/motd.sh
+RUN echo "/etc/motd.sh" >> /root/.bashrc
+
+# Create app directory and copy application files
+WORKDIR /app
+COPY terminado_server.py .
+COPY stats_reporter.py .
+COPY idle_monitor.py .
+COPY index.html .
+RUN chmod +x stats_reporter.py idle_monitor.py
+
+# Pre-compile Python bytecode for faster startup
+RUN python -m compileall /app
+
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set working directory for the terminal
+WORKDIR /workspace
+
+# Expose Terminado port
+EXPOSE 8888
+
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

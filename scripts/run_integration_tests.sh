@@ -183,7 +183,7 @@ echo ""
 echo -e "${GREEN}Web UI & API:${NC}"
 echo -e "  ${BLUE}Web UI:${NC}                   ${GREEN}http://localhost:8001${NC}"
 echo -e "  ${BLUE}Admin UI:${NC}                 ${GREEN}http://localhost:8001/admin${NC}"
-echo -e "  ${BLUE}API Server:${NC}               ${GREEN}http://localhost:8000${NC}
+echo -e "  ${BLUE}API Server:${NC}               ${GREEN}http://localhost:8000${NC}"
 echo -e "  ${BLUE}API Documentation:${NC}        ${GREEN}http://localhost:8000/docs${NC}"
 echo ""
 echo -e "${YELLOW}Note: On first visit to tunnel URL, you may need to click 'Click to Continue'${NC}"
@@ -276,7 +276,7 @@ ADMIN_TERMINALS=$(curl -s http://localhost:8000/api/v1/admin/terminals \
 ADMIN_TOTAL=$(echo "$ADMIN_TERMINALS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('total', -1))" 2>/dev/null || echo "-1")
 
 if [ "$ADMIN_TOTAL" -ge 0 ]; then
-    echo -e "${GREEN}✓ success (found ${ADMIN_TOTAL} terminals)${NC}"
+    echo -e "${GREEN}✓ success found ${ADMIN_TOTAL} terminals ${NC}"
 else
     echo -e "${RED}✗ failed${NC}"
 fi
@@ -318,10 +318,10 @@ echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "This will:"
 echo "  - Stop all terminal containers"
-echo "  - Stop Docker Compose services (API Server, Web Server, DB, Redis, Celery)"
-echo "  - Keep the database data (volumes will be preserved)"
+echo "  - Stop Docker Compose services API Server, Web Server, DB, Redis, Celery"
+echo "  - Keep the database data volumes will be preserved"
 echo ""
-read -p "Stop services? (y/N): " -n 1 -r
+read -p "Stop services? \(y/N\): " -n 1 -r
 echo ""
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -340,3 +340,4 @@ fi
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}Done!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+

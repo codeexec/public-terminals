@@ -14,6 +14,7 @@ from src.database.session import get_db
 from src.database.models import Terminal, TerminalStatus
 from src.api.schemas import TerminalCallbackRequest
 from src.auth.callback_auth import verify_callback_token, extract_bearer_token
+from src.services.warm_pool_service import get_warm_pool_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/callbacks", tags=["callbacks"])
@@ -67,6 +68,21 @@ async def report_tunnel_url(
     verify_callback_authentication(callback, authorization)
 
     logger.info(f"Received tunnel callback for terminal {callback.terminal_id}")
+
+    # Check if this is a warm pool container
+    warm_pool = get_warm_pool_service()
+    if warm_pool.is_warm_id(callback.terminal_id):
+        # Update the warm pool instead of database
+        if callback.tunnel_url:
+            await warm_pool.update_tunnel_url(callback.terminal_id, callback.tunnel_url)
+            logger.info(
+                f"Updated warm container {callback.terminal_id} with tunnel URL"
+            )
+        return {
+            "status": "success",
+            "terminal_id": callback.terminal_id,
+            "message": "Warm container tunnel URL registered",
+        }
 
     # Find the terminal
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()

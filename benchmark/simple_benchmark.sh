@@ -54,6 +54,12 @@ while [ $POLL_COUNT -lt $MAX_POLLS ]; do
     if [ ! -z "$TUNNEL_URL" ] && [ "$TUNNEL_URL" != "null" ]; then
         READY_TIME=$(date +%s%N)
         READY_DURATION=$(awk "BEGIN {print ($READY_TIME - $START_TIME) / 1000000000}")
+        
+        # If we missed the container detection (fast startup), calculate it now
+        if [ -z "$CONTAINER_DURATION" ]; then
+            CONTAINER_DURATION=$READY_DURATION
+        fi
+        
         TUNNEL_TIME=$(awk "BEGIN {print ($READY_DURATION - $CONTAINER_DURATION)}")
         echo "[$(date +%T)] Tunnel URL ready!"
         echo "  URL: $TUNNEL_URL"
