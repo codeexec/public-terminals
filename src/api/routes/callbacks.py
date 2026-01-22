@@ -211,6 +211,23 @@ async def report_stats(
     # Find the terminal
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
 
+    # Fallback for claimed warm containers: they report with warm-ID but exist in DB with a real ID
+    if not terminal and callback.terminal_id.startswith("warm-"):
+        # The container_name is deterministically derived from the warm ID (terminal_id in the container)
+        # warm-123 -> terminal-warm-123
+        expected_container_name = f"terminal-{callback.terminal_id}"
+
+        terminal = (
+            db.query(Terminal)
+            .filter(Terminal.container_name == expected_container_name)
+            .first()
+        )
+
+        if terminal:
+            logger.info(
+                f"Found real terminal {terminal.id} for warm container {callback.terminal_id} (via container_name lookup)"
+            )
+
     if not terminal:
         logger.error(f"Terminal {callback.terminal_id} not found")
         raise HTTPException(
