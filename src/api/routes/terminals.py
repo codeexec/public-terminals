@@ -306,6 +306,14 @@ async def get_terminal(
             detail=f"Terminal {terminal_id} not found",
         )
 
+    # Check for expiration (lazy update)
+    if terminal.is_expired() and terminal.status != TerminalStatus.EXPIRED:
+        logger.info(f"Lazily marking terminal {terminal_id} as expired")
+        terminal.status = TerminalStatus.EXPIRED
+        db.commit()
+        db.refresh(terminal)
+        return terminal
+
     # Auto-restart stopped terminals
     if terminal.status == TerminalStatus.STOPPED:
         logger.info(f"Auto-restarting stopped terminal {terminal_id}")
@@ -356,6 +364,17 @@ async def list_terminals(
 
     # Apply pagination
     terminals = query.offset(skip).limit(limit).all()
+
+    # Lazy expiration check for listed terminals
+    # This ensures users see correct status even if background cleanup hasn't run
+    updates_made = False
+    for t in terminals:
+        if t.is_expired() and t.status != TerminalStatus.EXPIRED:
+            t.status = TerminalStatus.EXPIRED
+            updates_made = True
+    
+    if updates_made:
+        db.commit()
 
     return TerminalListResponse(
         terminals=[TerminalResponse.model_validate(t) for t in terminals], total=total
