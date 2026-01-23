@@ -65,8 +65,17 @@ class DockerCLIService(ContainerServiceInterface):
             logger.warning(f"Could not resolve IP for {url}: {e}")
         return None
 
-    async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
-        """Create a new Docker container for terminal"""
+    async def create_terminal_container(
+        self, terminal_id: str, use_gpu: bool = False
+    ) -> Dict[str, str]:
+        """
+        Create a new Docker container for terminal.
+
+        Args:
+            terminal_id: Unique identifier for the terminal
+            use_gpu: Ignored for Docker (GPU only supported on GKE Autopilot)
+        """
+        # Note: use_gpu is ignored for Docker containers
         # Check container limit
         active_count = await self.count_active_containers()
         if active_count >= settings.MAX_CONTAINERS_PER_SERVER:
@@ -327,6 +336,24 @@ class DockerCLIService(ContainerServiceInterface):
 
         except Exception as e:
             logger.error(f"Failed to get status for container {container_id}: {e}")
+            return None
+
+    async def get_container_ip(self, container_id: str) -> Optional[str]:
+        """Get Docker container IP"""
+        try:
+            cmd = [
+                "docker",
+                "inspect",
+                "-f",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                container_id,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get IP for container {container_id}: {e}")
             return None
 
     async def count_active_containers(self) -> int:

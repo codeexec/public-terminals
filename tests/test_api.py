@@ -46,7 +46,7 @@ def test_create_terminal():
         assert "id" in data
         assert "status" in data
         assert "expires_at" in data
-        assert data["status"] in ["pending", "starting"]
+        assert data["status"] in ["pending", "starting", "started"]
     finally:
         if terminal_id:
             try:

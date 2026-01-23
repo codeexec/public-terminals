@@ -6,8 +6,19 @@ class ContainerServiceInterface(ABC):
     """Abstract interface for container management"""
 
     @abstractmethod
-    async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
-        """Create a new terminal container"""
+    async def create_terminal_container(
+        self, terminal_id: str, use_gpu: bool = False
+    ) -> Dict[str, str]:
+        """
+        Create a new terminal container.
+
+        Args:
+            terminal_id: Unique identifier for the terminal
+            use_gpu: Request GPU-enabled container (GKE Autopilot only)
+
+        Returns:
+            Dict with container_id and container_name
+        """
         pass
 
     @abstractmethod
@@ -33,4 +44,9 @@ class ContainerServiceInterface(ABC):
     @abstractmethod
     async def get_container_stats(self, container_id: str) -> Optional[Dict]:
         """Get container resource usage statistics"""
+        pass
+
+    @abstractmethod
+    async def get_container_ip(self, container_id: str) -> Optional[str]:
+        """Get container IP address"""
         pass

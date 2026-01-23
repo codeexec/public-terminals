@@ -73,6 +73,7 @@ async def test_start_terminal_endpoint():
     term.id = "t1"
     term.status = TerminalStatus.STOPPED
     term.is_expired.return_value = False
+    term.gpu_enabled = False  # Add GPU enabled attribute
 
     mock_db.query.return_value.filter.return_value.first.return_value = term
 
@@ -82,12 +83,11 @@ async def test_start_terminal_endpoint():
     assert term.error_message is None
     mock_db.commit.assert_called()
 
-    # Check background task was added with restart=True
-    # We need to import the function to compare, or check arg name
+    # Check background task was added with restart=True and use_gpu from terminal
     from src.api.routes.terminals import _create_terminal_background
 
     mock_bg_tasks.add_task.assert_called_with(
-        _create_terminal_background, "t1", mock_db, restart=True
+        _create_terminal_background, "t1", mock_db, restart=True, use_gpu=False
     )
 
 

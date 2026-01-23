@@ -24,13 +24,17 @@ async def test_create_terminal_limit_exceeded_db():
     mock_container_service = AsyncMock()
     mock_container_service.count_active_containers.return_value = 0
 
+    # Mock terminal_create with use_gpu=None (no GPU requested)
+    mock_terminal_create = MagicMock()
+    mock_terminal_create.use_gpu = None
+
     with patch(
         "src.api.routes.terminals.get_container_service",
         return_value=mock_container_service,
     ):
         with pytest.raises(HTTPException) as exc_info:
             await create_terminal(
-                terminal_create=MagicMock(),
+                terminal_create=mock_terminal_create,
                 background_tasks=mock_background_tasks,
                 x_guest_id="test",
                 db=mock_db,
@@ -61,13 +65,17 @@ async def test_create_terminal_limit_exceeded_real():
         settings.MAX_CONTAINERS_PER_SERVER
     )
 
+    # Mock terminal_create with use_gpu=None (no GPU requested)
+    mock_terminal_create = MagicMock()
+    mock_terminal_create.use_gpu = None
+
     with patch(
         "src.api.routes.terminals.get_container_service",
         return_value=mock_container_service,
     ):
         with pytest.raises(HTTPException) as exc_info:
             await create_terminal(
-                terminal_create=MagicMock(),
+                terminal_create=mock_terminal_create,
                 background_tasks=mock_background_tasks,
                 x_guest_id="test",
                 db=mock_db,
@@ -93,15 +101,27 @@ async def test_create_terminal_success():
     mock_container_service = AsyncMock()
     mock_container_service.count_active_containers.return_value = 10
 
+    # Mock warm pool service
+    mock_warm_pool = AsyncMock()
+    mock_warm_pool.claim_container.return_value = None
+
+    # Mock terminal_create with use_gpu=None (no GPU requested)
+    mock_terminal_create = MagicMock()
+    mock_terminal_create.use_gpu = None
+
     with patch(
         "src.api.routes.terminals.get_container_service",
         return_value=mock_container_service,
     ):
-        result = await create_terminal(
-            terminal_create=MagicMock(),
-            background_tasks=mock_background_tasks,
-            x_guest_id="test",
-            db=mock_db,
-        )
+        with patch(
+            "src.api.routes.terminals.get_warm_pool_service",
+            return_value=mock_warm_pool,
+        ):
+            result = await create_terminal(
+                terminal_create=mock_terminal_create,
+                background_tasks=mock_background_tasks,
+                x_guest_id="test",
+                db=mock_db,
+            )
 
-        assert result.status == TerminalStatus.PENDING
+            assert result.status == TerminalStatus.PENDING

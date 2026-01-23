@@ -34,8 +34,28 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to initialize Docker client: {e}")
             raise
 
+    async def get_container_ip(self, container_id: str) -> Optional[str]:
+        """Get Docker container IP"""
+        try:
+            container_info = self.client.inspect_container(container=container_id)
+            # Try to get IP from NetworkSettings
+            ip = container_info.get("NetworkSettings", {}).get("IPAddress")
+            if ip:
+                return str(ip)
+
+            # If empty, check networks
+            networks = container_info.get("NetworkSettings", {}).get("Networks", {})
+            for net in networks.values():
+                ip = net.get("IPAddress")
+                if ip:
+                    return str(ip)
+
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get IP for container {container_id}: {e}")
+            return None
+
     async def count_active_containers(self) -> int:
-        """Count number of active terminal containers"""
         try:
             containers = self.client.containers(
                 filters={"label": "app=terminal-server", "status": "running"}
@@ -94,13 +114,20 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to get container stats for {container_id}: {e}")
             return None
 
-    async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
+    async def create_terminal_container(
+        self, terminal_id: str, use_gpu: bool = False
+    ) -> Dict[str, str]:
         """
-        Create a new Docker container for terminal
+        Create a new Docker container for terminal.
+
+        Args:
+            terminal_id: Unique identifier for the terminal
+            use_gpu: Ignored for Docker (GPU only supported on GKE Autopilot)
 
         Returns:
             Dict with container_id, container_name
         """
+        # Note: use_gpu is ignored for Docker containers
         # Check container limit
         active_count = await self.count_active_containers()
         if active_count >= settings.MAX_CONTAINERS_PER_SERVER:
@@ -204,20 +231,64 @@ class KubernetesContainerService(ContainerServiceInterface):
     def __init__(self):
         from kubernetes import client, config
 
-        # Load k8s config
-        if settings.K8S_IN_CLUSTER:
-            config.load_incluster_config()
-        else:
-            config.load_kube_config()
+        # Load k8s config with fallback
+        try:
+            if settings.K8S_IN_CLUSTER:
+                try:
+                    config.load_incluster_config()
+                    logger.info("Loaded in-cluster Kubernetes config")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load in-cluster config: {e}. Trying kube-config..."
+                    )
+                    config.load_kube_config()
+                    logger.info("Loaded kube-config as fallback")
+            else:
+                try:
+                    config.load_kube_config()
+                    logger.info("Loaded standard kube-config")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load kube-config: {e}. Checking for in-cluster environment..."
+                    )
+                    if os.environ.get("KUBERNETES_SERVICE_HOST"):
+                        config.load_incluster_config()
+                        logger.info("Loaded in-cluster config as fallback")
+                    else:
+                        logger.error(
+                            "Not running in K8s cluster (no KUBERNETES_SERVICE_HOST) and kube-config failed."
+                        )
+                        raise e
+        except Exception as e:
+            logger.error(f"Failed to load any Kubernetes config: {e}")
+            raise
 
         self.v1 = client.CoreV1Api()
         self.namespace = settings.K8S_NAMESPACE
+
+        # GKE Autopilot configuration
+        self.gke_autopilot = settings.GKE_AUTOPILOT_ENABLED
+        self.gpu_enabled = settings.GPU_ENABLED and self.gke_autopilot
+        self.gpu_type = settings.GPU_TYPE
+        self.gpu_count = settings.GPU_COUNT
+
         logger.info(
-            f"Kubernetes container service initialized (namespace: {self.namespace})"
+            f"Kubernetes container service initialized "
+            f"(namespace: {self.namespace}, autopilot: {self.gke_autopilot}, gpu: {self.gpu_enabled})"
         )
 
+    async def get_container_ip(self, container_id: str) -> Optional[str]:
+        """Get Kubernetes Pod IP"""
+        try:
+            pod = self.v1.read_namespaced_pod(
+                name=container_id, namespace=self.namespace
+            )
+            return str(pod.status.pod_ip) if pod.status.pod_ip else None
+        except Exception as e:
+            logger.error(f"Failed to get IP for pod {container_id}: {e}")
+            return None
+
     async def count_active_containers(self) -> int:
-        """Count number of active terminal pods"""
         try:
             # We list pods with the specific label and check if they are running or pending (consuming resources)
             pods = self.v1.list_namespaced_pod(
@@ -307,9 +378,147 @@ class KubernetesContainerService(ContainerServiceInterface):
             logger.warning(f"Failed to get pod stats for {container_id}: {e}")
             return None
 
-    async def create_terminal_container(self, terminal_id: str) -> Dict[str, str]:
+    def _build_resource_requirements(self, use_gpu: bool):
+        """Build resource requirements including GPU if needed."""
+        from kubernetes import client
+
+        # Convert CPU to millicores format (e.g., 1.0 -> "1000m", 0.5 -> "500m")
+        cpu_millicores = int(settings.CONTAINER_CPU_LIMIT * 1000)
+        cpu_str = f"{cpu_millicores}m"
+
+        # Normalize memory format for Kubernetes (e.g., "1g" -> "1Gi")
+        memory = settings.CONTAINER_MEMORY_LIMIT
+        if memory.lower().endswith("g") and not memory.lower().endswith("gi"):
+            memory = memory[:-1] + "Gi"
+        elif memory.lower().endswith("m") and not memory.lower().endswith("mi"):
+            memory = memory[:-1] + "Mi"
+
+        requests = {
+            "cpu": cpu_str,
+            "memory": memory,
+        }
+        limits = {
+            "cpu": cpu_str,
+            "memory": memory,
+        }
+
+        if use_gpu:
+            # Add GPU resource limit (required for GKE Autopilot GPU scheduling)
+            limits["nvidia.com/gpu"] = str(self.gpu_count)
+
+        return client.V1ResourceRequirements(
+            requests=requests,
+            limits=limits,
+        )
+
+    def _build_node_selector(self, use_gpu: bool) -> Optional[Dict[str, str]]:
+        """Build node selector for GKE Autopilot GPU pods."""
+        if not self.gke_autopilot or not use_gpu:
+            return None
+
+        return {
+            "cloud.google.com/gke-accelerator": self.gpu_type,
+            "cloud.google.com/gke-accelerator-count": str(self.gpu_count),
+        }
+
+    def _build_pod_spec(self, terminal_id: str, use_gpu: bool = False):
         """
-        Create a new Kubernetes Pod for terminal
+        Build Kubernetes Pod specification.
+
+        Args:
+            terminal_id: The terminal identifier
+            use_gpu: Whether to enable GPU for this pod
+
+        Returns:
+            V1Pod object ready for creation
+        """
+        from kubernetes import client
+
+        pod_name = f"terminal-{terminal_id}"
+
+        # Select the appropriate image
+        image = settings.TERMINAL_IMAGE
+        if use_gpu and settings.GPU_TERMINAL_IMAGE:
+            image = settings.GPU_TERMINAL_IMAGE
+
+        # Build resource requirements
+        resources = self._build_resource_requirements(use_gpu)
+
+        # Build node selector (for GKE Autopilot GPU scheduling)
+        node_selector = self._build_node_selector(use_gpu)
+
+        # Build environment variables
+        env_vars = [
+            client.V1EnvVar(name="TERMINAL_ID", value=terminal_id),
+            client.V1EnvVar(
+                name="API_CALLBACK_URL",
+                value=f"{settings.API_BASE_URL}/api/v1/callbacks",
+            ),
+            client.V1EnvVar(
+                name="CALLBACK_TOKEN",
+                value=generate_callback_token(terminal_id),
+            ),
+            client.V1EnvVar(name="LOCALTUNNEL_HOST", value=settings.LOCALTUNNEL_HOST),
+            client.V1EnvVar(
+                name="TERMINAL_IDLE_TIMEOUT_SECONDS",
+                value=str(settings.TERMINAL_IDLE_TIMEOUT_SECONDS),
+            ),
+        ]
+
+        # Add GPU-related env vars if using GPU
+        if use_gpu:
+            env_vars.append(client.V1EnvVar(name="GPU_ENABLED", value="true"))
+            env_vars.append(client.V1EnvVar(name="NVIDIA_VISIBLE_DEVICES", value="all"))
+
+        # Build labels
+        labels = {
+            "app": "terminal-server",
+            "terminal-id": terminal_id,
+        }
+        if use_gpu:
+            labels["gpu-enabled"] = "true"
+
+        # Build container
+        container = client.V1Container(
+            name="terminal",
+            image=image,
+            env=env_vars,
+            ports=[client.V1ContainerPort(container_port=8888)],
+            resources=resources,
+        )
+
+        # Build pod spec
+        pod_spec = client.V1PodSpec(
+            restart_policy="Never",
+            containers=[container],
+        )
+
+        # Add node selector if set (for GPU pods on GKE Autopilot)
+        if node_selector:
+            pod_spec.node_selector = node_selector
+
+        # Note: Tolerations are automatically added by GKE Autopilot
+        # for GPU workloads, no need to manually specify them
+
+        return client.V1Pod(
+            api_version="v1",
+            kind="Pod",
+            metadata=client.V1ObjectMeta(
+                name=pod_name,
+                labels=labels,
+            ),
+            spec=pod_spec,
+        )
+
+    async def create_terminal_container(
+        self, terminal_id: str, use_gpu: bool = False
+    ) -> Dict[str, str]:
+        """
+        Create a new Kubernetes Pod for terminal.
+
+        Args:
+            terminal_id: Unique identifier for the terminal
+            use_gpu: Request GPU-enabled container (GKE Autopilot only)
 
         Returns:
             Dict with container_id (pod_name), container_name
@@ -321,67 +530,21 @@ class KubernetesContainerService(ContainerServiceInterface):
                 f"Max container limit reached ({settings.MAX_CONTAINERS_PER_SERVER})"
             )
 
-        from kubernetes import client
+        # Determine if GPU should be used
+        should_use_gpu = use_gpu and self.gpu_enabled
 
         pod_name = f"terminal-{terminal_id}"
 
-        # Define Pod specification
-        pod_manifest = client.V1Pod(
-            api_version="v1",
-            kind="Pod",
-            metadata=client.V1ObjectMeta(
-                name=pod_name,
-                labels={
-                    "app": "terminal-server",
-                    "terminal-id": terminal_id,
-                },
-            ),
-            spec=client.V1PodSpec(
-                restart_policy="Never",
-                containers=[
-                    client.V1Container(
-                        name="terminal",
-                        image=settings.TERMINAL_IMAGE,
-                        env=[
-                            client.V1EnvVar(name="TERMINAL_ID", value=terminal_id),
-                            client.V1EnvVar(
-                                name="API_CALLBACK_URL",
-                                value=f"{settings.API_BASE_URL}/api/v1/callbacks",
-                            ),
-                            client.V1EnvVar(
-                                name="CALLBACK_TOKEN",
-                                value=generate_callback_token(terminal_id),
-                            ),
-                            client.V1EnvVar(
-                                name="LOCALTUNNEL_HOST", value=settings.LOCALTUNNEL_HOST
-                            ),
-                            client.V1EnvVar(
-                                name="TERMINAL_IDLE_TIMEOUT_SECONDS",
-                                value=str(settings.TERMINAL_IDLE_TIMEOUT_SECONDS),
-                            ),
-                        ],
-                        ports=[client.V1ContainerPort(container_port=8888)],
-                        resources=client.V1ResourceRequirements(
-                            requests={
-                                "cpu": str(settings.CONTAINER_CPU_LIMIT),
-                                "memory": settings.CONTAINER_MEMORY_LIMIT,
-                            },
-                            limits={
-                                "cpu": str(settings.CONTAINER_CPU_LIMIT),
-                                "memory": settings.CONTAINER_MEMORY_LIMIT,
-                            },
-                        ),
-                    )
-                ],
-            ),
-        )
+        # Build pod specification
+        pod_manifest = self._build_pod_spec(terminal_id, should_use_gpu)
 
         try:
             # Create the pod
             self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
 
             logger.info(
-                f"Created Kubernetes pod: {pod_name} for terminal {terminal_id}"
+                f"Created Kubernetes pod: {pod_name} for terminal {terminal_id} "
+                f"(gpu={should_use_gpu})"
             )
 
             return {

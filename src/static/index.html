@@ -36,7 +36,13 @@
                 <h1><i class="bi bi-terminal-fill"></i> Terminal Manager</h1>
                 <small class="text-muted">Guest ID: <span id="guest-id">...</span></small>
             </div>
-            <div class="col-auto">
+            <div class="col-auto d-flex align-items-center gap-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="gpu-toggle" style="cursor: pointer;">
+                    <label class="form-check-label" for="gpu-toggle" style="cursor: pointer;">
+                        <i class="bi bi-gpu-card"></i> GPU
+                    </label>
+                </div>
                 <button id="create-btn" class="btn btn-primary btn-lg">
                     <i class="bi bi-plus-lg"></i> New Terminal
                 </button>
@@ -107,21 +113,25 @@
 
         async function createTerminal() {
             const btn = document.getElementById('create-btn');
+            const gpuToggle = document.getElementById('gpu-toggle');
+            const useGpu = gpuToggle.checked;
+
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
 
             try {
                 const response = await fetch(`${API_BASE}/terminals`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Content-Type': 'application/json',
                         'X-Guest-ID': guestId
                     },
-                    body: JSON.stringify({})
+                    body: JSON.stringify({ use_gpu: useGpu || null })
                 });
-                
+
                 if (response.ok) {
-                    showAlert('Terminal creation started!', 'success');
+                    const terminalType = useGpu ? 'GPU terminal' : 'Terminal';
+                    showAlert(`${terminalType} creation started!`, 'success');
                     fetchTerminals(); // Refresh immediately
                 } else {
                     const err = await response.json();
@@ -192,6 +202,7 @@
             list.innerHTML = terminals.map(t => {
                 const isReady = t.status === 'started' && t.tunnel_url;
                 const statusIcon = getStatusIcon(t.status);
+                const gpuBadge = t.gpu_enabled ? `<span class="badge bg-success"><i class="bi bi-gpu-card"></i> GPU</span>` : '';
 
                 let actionBtn = '';
                 if (isReady) {
@@ -211,12 +222,13 @@
                     <div class="card h-100">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start mb-3">
-                                <h5 class="card-title text-truncate" title="${t.id}">Terminal</h5>
+                                <h5 class="card-title text-truncate" title="${t.id}">Terminal ${gpuBadge}</h5>
                                 <span class="badge bg-secondary status-${t.status.toLowerCase()}">${t.status}</span>
                             </div>
                             <p class="card-text small text-muted">
                                 ID: ${t.id.substring(0, 8)}...<br>
                                 Created: ${timeSince(t.created_at)}
+                                ${t.gpu_enabled ? `<br>GPU: ${t.gpu_type || 'nvidia-l4'} x${t.gpu_count || 1}` : ''}
                             </p>
                             ${t.error_message ? `<div class="alert alert-danger p-2 small">${t.error_message}</div>` : ''}
                             <div class="d-grid gap-2">

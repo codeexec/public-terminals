@@ -2,7 +2,7 @@
 SQLAlchemy database models
 """
 
-from sqlalchemy import String, DateTime, Enum as SQLEnum
+from sqlalchemy import String, DateTime, Enum as SQLEnum, Boolean, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta, timezone
@@ -67,6 +67,11 @@ class Terminal(Base):
     # Error tracking
     error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
+    # GPU configuration (for GKE Autopilot)
+    gpu_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    gpu_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    gpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     def __repr__(self) -> str:
         return f"<Terminal(id={self.id}, status={self.status}, tunnel_url={self.tunnel_url})>"
 
@@ -122,4 +127,7 @@ class Terminal(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "error_message": self.error_message,
+            "gpu_enabled": self.gpu_enabled,
+            "gpu_type": self.gpu_type,
+            "gpu_count": self.gpu_count,
         }

@@ -25,6 +25,19 @@ class Settings(BaseSettings):
     GCP_PROJECT_ID: str = ""
     GCP_REGION: str = "us-central1"
 
+    # GKE Autopilot Configuration
+    GKE_AUTOPILOT_ENABLED: bool = (
+        False  # Enable GKE Autopilot mode (sub-mode of kubernetes)
+    )
+
+    # GPU Configuration (only applies when GKE_AUTOPILOT_ENABLED=True)
+    GPU_ENABLED: bool = False  # Enable GPU support for terminals
+    GPU_TYPE: str = "nvidia-l4"  # GPU type: nvidia-l4, nvidia-t4, nvidia-a100-80gb, nvidia-h100-80gb
+    GPU_COUNT: int = 1  # Number of GPUs per terminal
+    GPU_TERMINAL_IMAGE: str = (
+        ""  # Optional GPU-specific image (falls back to TERMINAL_IMAGE)
+    )
+
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_ALGORITHM: str = "HS256"
     JWT_SECRET_KEY: str = ""
@@ -71,6 +84,9 @@ class Settings(BaseSettings):
     # Warm Pool Configuration
     WARM_POOL_ENABLED: bool = True  # Enable pre-warmed container pool
     WARM_POOL_SIZE: int = 2  # Number of containers to keep warm
+    WARM_POOL_GPU_SIZE: int = (
+        1  # Number of GPU containers to keep warm (smaller due to cost)
+    )
 
     @field_validator("TERMINAL_IDLE_TIMEOUT_SECONDS")
     @classmethod
@@ -85,6 +101,28 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"TERMINAL_IDLE_TIMEOUT_SECONDS must be at most {max_timeout} seconds (24 hours)"
             )
+        return v
+
+    @field_validator("GPU_TYPE")
+    @classmethod
+    def validate_gpu_type(cls, v: str) -> str:
+        valid_types = [
+            "nvidia-l4",
+            "nvidia-t4",
+            "nvidia-a100-80gb",
+            "nvidia-h100-80gb",
+            "nvidia-tesla-t4",
+            "nvidia-tesla-a100",
+        ]
+        if v not in valid_types:
+            raise ValueError(f"GPU_TYPE must be one of: {valid_types}")
+        return v
+
+    @field_validator("GPU_COUNT")
+    @classmethod
+    def validate_gpu_count(cls, v: int) -> int:
+        if v < 1 or v > 8:
+            raise ValueError("GPU_COUNT must be between 1 and 8")
         return v
 
     # Enable gVisor for enhanced container isolation (requires runsc runtime)

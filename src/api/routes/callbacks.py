@@ -199,14 +199,19 @@ async def report_stats(
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
-    """
-    Callback endpoint for containers to report their resource usage statistics
-    Containers call this periodically (every 30 seconds) to push CPU and memory stats
-
-    Requires: Valid callback authentication token
-    """
     # Verify authentication
     verify_callback_authentication(callback, authorization)
+
+    # Check if this is a warm pool container
+    warm_pool = get_warm_pool_service()
+    if warm_pool.is_warm_id(callback.terminal_id):
+        # Warm containers don't exist in DB yet, but they report stats
+        # We can just ignore these stats or update the warm pool if we tracked stats there
+        return {
+            "status": "success",
+            "terminal_id": callback.terminal_id,
+            "message": "Warm container stats received (ignored)",
+        }
 
     # Find the terminal
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()

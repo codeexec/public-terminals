@@ -44,7 +44,6 @@ services:
       - API_PORT=8000
       - API_BASE_URL=http://api-server:8000
       - WEB_BASE_URL=http://web-server:8001
-      - TERMINAL_IMAGE=terminal-server:latest
       - LOG_LEVEL=INFO
       - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
       - USE_GVISOR=${USE_GVISOR}
@@ -53,10 +52,32 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
+      # Container platform configuration
+      - CONTAINER_PLATFORM=${CONTAINER_PLATFORM:-docker}
+      - TERMINAL_IMAGE=${TERMINAL_IMAGE:-terminal-server:latest}
+      # Kubernetes/GKE configuration
+      - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
+      - K8S_IN_CLUSTER=${K8S_IN_CLUSTER:-false}
+      - GKE_AUTOPILOT_ENABLED=${GKE_AUTOPILOT_ENABLED:-false}
+      # GPU configuration
+      - GPU_ENABLED=${GPU_ENABLED:-false}
+      - GPU_TYPE=${GPU_TYPE:-nvidia-l4}
+      - GPU_COUNT=${GPU_COUNT:-1}
+      - GPU_TERMINAL_IMAGE=${GPU_TERMINAL_IMAGE:-}
+      # Warm pool configuration
+      - WARM_POOL_ENABLED=${WARM_POOL_ENABLED:-true}
+      - WARM_POOL_SIZE=${WARM_POOL_SIZE:-2}
+      - WARM_POOL_GPU_SIZE=${WARM_POOL_GPU_SIZE:-0}
+      # GCP configuration
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-}
+      - GCP_REGION=${GCP_REGION:-us-central1}
+      - KUBECONFIG=/root/.kube/config
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # For Docker-in-Docker
       - ./src:/app/src
       - ./terminal-container:/app/terminal-container  # For terminal files and gVisor resolv.conf
+      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro  # Mount kubeconfig for GKE access
+      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud:ro  # Mount gcloud credentials
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,14 +118,26 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
       - REDIS_URL=redis://redis:6379/0
-      - TERMINAL_IMAGE=terminal-server:latest
       - LOG_LEVEL=INFO
       - LOCALTUNNEL_HOST=https://localtunnel.newsml.io
       - USE_GVISOR=${USE_GVISOR}
+      # Container platform configuration
+      - CONTAINER_PLATFORM=${CONTAINER_PLATFORM:-docker}
+      - TERMINAL_IMAGE=${TERMINAL_IMAGE:-terminal-server:latest}
+      # Kubernetes/GKE configuration
+      - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
+      - K8S_IN_CLUSTER=${K8S_IN_CLUSTER:-false}
+      - GKE_AUTOPILOT_ENABLED=${GKE_AUTOPILOT_ENABLED:-false}
+      # GPU configuration
+      - GPU_ENABLED=${GPU_ENABLED:-false}
+      - GPU_TYPE=${GPU_TYPE:-nvidia-l4}
+      - GPU_COUNT=${GPU_COUNT:-1}
+      - KUBECONFIG=/root/.kube/config
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./src:/app/src
       - ./terminal-container:/app/terminal-container  # For terminal files and gVisor resolv.conf
+      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro  # Mount kubeconfig for GKE access
     depends_on:
       - api-server
       - postgres
@@ -120,10 +153,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
       - REDIS_URL=redis://redis:6379/0
-      - CONTAINER_PLATFORM=docker
+      - CONTAINER_PLATFORM=${CONTAINER_PLATFORM:-docker}
       - LOG_LEVEL=INFO
+      - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
+      - K8S_IN_CLUSTER=${K8S_IN_CLUSTER:-false}
+      - KUBECONFIG=/root/.kube/config
     volumes:
       - ./src:/app/src
+      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro  # Mount kubeconfig for GKE access
     depends_on:
       - api-server
       - postgres

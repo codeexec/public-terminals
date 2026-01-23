@@ -26,17 +26,31 @@ router = APIRouter(prefix="/terminals", tags=["terminals"])
 
 
 async def _poll_container_status(
-    terminal_id: str, container_name: str, db: Session, max_attempts: int = 80
+    terminal_id: str,
+    container_name: str,
+    db: Session,
+    container_service,
+    max_attempts: int = 80,
 ):
     """
     Poll the container's HTTP status endpoint to get tunnel URL
     Uses progressive backoff for faster initial detection
     """
-    status_url = f"http://{container_name}:8888/status"
-
     async with httpx.AsyncClient(timeout=5.0) as client:
         for attempt in range(max_attempts):
             try:
+                # Resolve IP dynamically (needed for K8s)
+                container_ip = await container_service.get_container_ip(container_name)
+
+                if not container_ip:
+                    logger.debug(
+                        f"Container {container_name} no IP yet (attempt {attempt + 1})"
+                    )
+                    # Use container name as fallback (works for Docker)
+                    status_url = f"http://{container_name}:8888/status"
+                else:
+                    status_url = f"http://{container_ip}:8888/status"
+
                 logger.info(
                     f"Polling container status for terminal {terminal_id} (attempt {attempt + 1}/{max_attempts})"
                 )
@@ -91,15 +105,15 @@ async def _poll_container_status(
 
 
 async def _create_terminal_background(
-    terminal_id: str, db: Session, restart: bool = False
+    terminal_id: str, db: Session, restart: bool = False, use_gpu: bool = False
 ):
     """
     Background task to create terminal container
     This runs asynchronously after the API returns
     """
-    container_service = get_container_service()
-
     try:
+        container_service = get_container_service()
+
         # Get the terminal
         terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
         if not terminal:
@@ -121,9 +135,11 @@ async def _create_terminal_background(
         terminal.status = TerminalStatus.STARTING
         db.commit()
 
-        # Create the container
-        logger.info(f"Creating container for terminal {terminal_id}")
-        result = await container_service.create_terminal_container(terminal_id)
+        # Create the container (pass GPU flag)
+        logger.info(f"Creating container for terminal {terminal_id} (gpu={use_gpu})")
+        result = await container_service.create_terminal_container(
+            terminal_id, use_gpu=use_gpu
+        )
 
         # Update terminal with container info
         terminal.container_id = result["container_id"]
@@ -136,7 +152,9 @@ async def _create_terminal_background(
         )
 
         # Poll container status endpoint to get tunnel URL
-        success = await _poll_container_status(terminal_id, terminal.container_name, db)
+        success = await _poll_container_status(
+            terminal_id, terminal.container_name, db, container_service
+        )
         if not success:
             # Mark as failed if we couldn't get tunnel URL
             terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
@@ -214,23 +232,37 @@ async def create_terminal(
         # We don't block creation on check failure unless it's the limit exception
         pass
 
+    # Determine GPU usage
+    use_gpu = terminal_create.use_gpu or False
+    if use_gpu and not (settings.GKE_AUTOPILOT_ENABLED and settings.GPU_ENABLED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GPU terminals are not available (requires GKE Autopilot with GPU enabled)",
+        )
+
     # Create terminal record
     terminal = Terminal()
     terminal.user_id = x_guest_id
     terminal.set_expiry(hours=settings.TERMINAL_TTL_HOURS)
     terminal.status = TerminalStatus.PENDING
 
+    # Store GPU configuration
+    terminal.gpu_enabled = use_gpu
+    if use_gpu:
+        terminal.gpu_type = settings.GPU_TYPE
+        terminal.gpu_count = settings.GPU_COUNT
+
     db.add(terminal)
     db.commit()
     db.refresh(terminal)
 
-    logger.info(f"Created terminal record: {terminal.id}")
+    logger.info(f"Created terminal record: {terminal.id} (gpu={use_gpu})")
 
     # OPTIMIZATION: Try to claim a pre-warmed container first
     warm_pool = get_warm_pool_service()
     if settings.WARM_POOL_ENABLED:
         try:
-            warm_container = await warm_pool.claim_container()
+            warm_container = await warm_pool.claim_container(use_gpu=use_gpu)
             if warm_container and warm_container.tunnel_url:
                 # Instant startup! Transfer warm container to terminal
                 terminal.container_id = warm_container.container_id
@@ -251,7 +283,9 @@ async def create_terminal(
             logger.warning(f"Failed to claim warm container: {e}")
 
     # Fallback: Trigger background container creation
-    background_tasks.add_task(_create_terminal_background, terminal.id, db)
+    background_tasks.add_task(
+        _create_terminal_background, terminal.id, db, restart=False, use_gpu=use_gpu
+    )
 
     return terminal
 
@@ -280,7 +314,11 @@ async def get_terminal(
 
         # Create new container in background (reuse existing function)
         background_tasks.add_task(
-            _create_terminal_background, terminal.id, db, restart=True
+            _create_terminal_background,
+            terminal.id,
+            db,
+            restart=True,
+            use_gpu=terminal.gpu_enabled,
         )
 
     return terminal
@@ -359,8 +397,13 @@ async def start_terminal(
     terminal.error_message = None
     db.commit()
 
+    # Pass the GPU flag from the terminal record
     background_tasks.add_task(
-        _create_terminal_background, terminal.id, db, restart=True
+        _create_terminal_background,
+        terminal.id,
+        db,
+        restart=True,
+        use_gpu=terminal.gpu_enabled,
     )
 
     return terminal

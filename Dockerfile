@@ -5,19 +5,27 @@ WORKDIR /app
 
 # Install system dependencies
 # We need Docker CLI to spawn sibling containers (Docker-in-Docker approach)
+# Also install gcloud SDK for GKE authentication
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
     lsb-release \
     postgresql-client \
+    apt-transport-https \
+    ca-certificates \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
     && echo \
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
       $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee /etc/apt/sources.list.d/google-cloud-sdk.list \
     && apt-get update \
-    && apt-get install -y docker-ce-cli \
+    && apt-get install -y docker-ce-cli google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin \
     && rm -rf /var/lib/apt/lists/*
+
+# Set up GKE auth plugin
+ENV USE_GKE_GCLOUD_AUTH_PLUGIN=True
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .

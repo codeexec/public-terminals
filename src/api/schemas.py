@@ -12,7 +12,10 @@ import re
 class TerminalCreate(BaseModel):
     """Request schema for creating a terminal"""
 
-    pass  # No input required for basic creation
+    use_gpu: Optional[bool] = Field(
+        default=None,
+        description="Request a GPU-enabled terminal (only available on GKE Autopilot)",
+    )
 
 
 class TerminalResponse(BaseModel):
@@ -30,6 +33,9 @@ class TerminalResponse(BaseModel):
     expires_at: Optional[datetime] = None
     last_activity_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    gpu_enabled: bool = False
+    gpu_type: Optional[str] = None
+    gpu_count: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
