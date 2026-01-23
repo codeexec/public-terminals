@@ -16,18 +16,18 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     CLEANUP_INTERVAL_MINUTES: int = 5
-    CONTAINER_PLATFORM: Literal["docker", "kubernetes"] = "docker"
+    CONTAINER_PLATFORM: Literal["docker", "kubernetes"] = "kubernetes"
 
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/terminal_server"
     DOCKER_HOST: str = ""
     DOCKER_NETWORK: str = "public-terminals_default"
 
-    GCP_PROJECT_ID: str = ""
+    GCP_PROJECT_ID: str = "beatrix-user-project"
     GCP_REGION: str = "us-central1"
 
     # GKE Autopilot Configuration
     GKE_AUTOPILOT_ENABLED: bool = (
-        False  # Enable GKE Autopilot mode (sub-mode of kubernetes)
+        True  # Enable GKE Autopilot mode (sub-mode of kubernetes)
     )
 
     # GPU Configuration (only applies when GKE_AUTOPILOT_ENABLED=True)
@@ -59,7 +59,7 @@ class Settings(BaseSettings):
         return v
 
     K8S_IN_CLUSTER: bool = False
-    K8S_NAMESPACE: str = "default"
+    K8S_NAMESPACE: str = "terminals"
 
     LOCALTUNNEL_HOST: str = "https://localtunnel.newsml.io"
     LOG_LEVEL: str = "INFO"
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     CONTAINER_CPU_LIMIT: float = 1.0
 
     TERMINAL_IDLE_TIMEOUT_SECONDS: int = 3600  # Default: 1 hour
-    TERMINAL_IMAGE: str = "terminal-server:latest"
+    TERMINAL_IMAGE: str = "us-central1-docker.pkg.dev/beatrix-user-project/terminals/terminal-server:latest"
     TERMINAL_TTL_HOURS: int = 24
 
     # Warm Pool Configuration

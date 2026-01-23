@@ -120,9 +120,16 @@ if ! grep -q "^JWT_SECRET_KEY=.\+" .env 2>/dev/null; then
 fi
 
 # 3. Build Terminal Container if needed
+PLATFORM=$(grep "^CONTAINER_PLATFORM=" .env 2>/dev/null | cut -d= -f2 || echo "docker")
+GKE_IMAGE="us-central1-docker.pkg.dev/beatrix-user-project/terminals/terminal-server:latest"
+
 if [ "$MODE" == "rebuild" ]; then
     echo -e "${YELLOW}Rebuilding terminal-server image...${NC}"
     cd terminal-container && sudo docker build -t terminal-server:latest . && cd ..
+    if [ "$PLATFORM" == "kubernetes" ]; then
+        echo -e "${YELLOW}Tagging image for GKE...${NC}"
+        sudo docker tag terminal-server:latest "$GKE_IMAGE"
+    fi
     echo -e "${GREEN}✓ terminal-server image rebuilt${NC}"
 elif [ "$MODE" == "start" ]; then
     echo -e "${YELLOW}Ensuring terminal-server image exists...${NC}"
@@ -131,6 +138,15 @@ elif [ "$MODE" == "start" ]; then
         cd terminal-container && sudo docker build -t terminal-server:latest . && cd ..
     else
         echo -e "${GREEN}✓ terminal-server image found${NC}"
+    fi
+    
+    if [ "$PLATFORM" == "kubernetes" ]; then
+        if [[ "$(sudo docker images -q "$GKE_IMAGE" 2> /dev/null)" == "" ]]; then
+            echo -e "${YELLOW}Tagging image for GKE...${NC}"
+            sudo docker tag terminal-server:latest "$GKE_IMAGE"
+        else
+            echo -e "${GREEN}✓ GKE image tag found${NC}"
+        fi
     fi
 fi
 

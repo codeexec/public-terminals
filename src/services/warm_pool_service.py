@@ -57,7 +57,7 @@ class WarmPoolService:
         self._running = False
 
         # Configuration
-        self.pool_size = getattr(settings, "WARM_POOL_SIZE", 3)
+        self.pool_size = getattr(settings, "WARM_POOL_SIZE", 2)
         self.pool_enabled = getattr(settings, "WARM_POOL_ENABLED", True)
 
         # GPU warm pool configuration (smaller due to cost)
