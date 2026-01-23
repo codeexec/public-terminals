@@ -202,21 +202,11 @@ async def report_stats(
     # Verify authentication
     verify_callback_authentication(callback, authorization)
 
-    # Check if this is a warm pool container
-    warm_pool = get_warm_pool_service()
-    if warm_pool.is_warm_id(callback.terminal_id):
-        # Warm containers don't exist in DB yet, but they report stats
-        # We can just ignore these stats or update the warm pool if we tracked stats there
-        return {
-            "status": "success",
-            "terminal_id": callback.terminal_id,
-            "message": "Warm container stats received (ignored)",
-        }
-
-    # Find the terminal
+    # First try to find the terminal directly
     terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
 
-    # Fallback for claimed warm containers: they report with warm-ID but exist in DB with a real ID
+    # If not found, and it looks like a warm ID, check if it was claimed
+    # (Claimed warm containers report with warm-ID but exist in DB with a real ID)
     if not terminal and callback.terminal_id.startswith("warm-"):
         # The container_name is deterministically derived from the warm ID (terminal_id in the container)
         # warm-123 -> terminal-warm-123
@@ -233,7 +223,19 @@ async def report_stats(
                 f"Found real terminal {terminal.id} for warm container {callback.terminal_id} (via container_name lookup)"
             )
 
+    # If still not found, check if it's an unclaimed warm container
     if not terminal:
+        warm_pool = get_warm_pool_service()
+        if warm_pool.is_warm_id(callback.terminal_id):
+            # Warm containers don't exist in DB yet, but they report stats
+            # We can just ignore these stats or update the warm pool if we tracked stats there
+            return {
+                "status": "success",
+                "terminal_id": callback.terminal_id,
+                "message": "Warm container stats received (ignored)",
+            }
+
+        # Real 404 if not found and not a warm container
         logger.error(f"Terminal {callback.terminal_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
