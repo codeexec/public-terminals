@@ -372,7 +372,7 @@ async def list_terminals(
         if t.is_expired() and t.status != TerminalStatus.EXPIRED:
             t.status = TerminalStatus.EXPIRED
             updates_made = True
-    
+
     if updates_made:
         db.commit()
 
