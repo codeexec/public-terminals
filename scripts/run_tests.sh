@@ -11,25 +11,50 @@ NC='\033[0m' # No Color
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
+# Root directory
 cd "$PROJECT_ROOT"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}        Terminal Server - Test Runner${NC}"
+echo -e "${BLUE}        Sandbox Server - Test Runner${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Check if pytest is installed
-if ! command -v pytest &> /dev/null; then
-    echo -e "${RED}✗ pytest not found${NC}"
-    echo ""
-    echo "Please install pytest and pytest-asyncio:"
-    echo "  pip install pytest pytest-asyncio pytest-cov"
-    echo ""
+# 1. Linting and Syntax Checks
+echo -e "${BLUE}[1/2] Running Linting and Syntax Checks...${NC}"
+
+# Check for syntax errors using ast.parse (read-only, avoids permission issues)
+echo -n "Checking for syntax errors... "
+SYNTAX_ERRORS=$(find src -name "*.py" -exec python3 -c "import ast; ast.parse(open('{}').read())" 2>&1 \;)
+if [ -z "$SYNTAX_ERRORS" ]; then
+    echo -e "${GREEN}PASS${NC}"
+else
+    echo -e "${RED}FAIL${NC}"
+    echo -e "${RED}Syntax errors detected in src directory!${NC}"
+    echo "$SYNTAX_ERRORS"
     exit 1
 fi
 
+# Run ruff check if available
+if command -v ruff &> /dev/null; then
+    echo -n "Running ruff linter... "
+    if ruff check src/ --select E9,F; then
+        echo -e "${GREEN}PASS${NC}"
+    else
+        echo -e "${RED}FAIL${NC}"
+        echo -e "${RED}Linter detected critical issues (syntax or undefined variables)!${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}Skipping ruff check (not installed)${NC}"
+fi
+
+echo ""
+
+# 2. Running Pytest
+echo -e "${BLUE}[2/2] Running Pytest...${NC}"
+
 # Parse arguments
+
 MODE="all"
 VERBOSE=""
 COVERAGE=""
@@ -39,7 +64,7 @@ SPECIFIC_TEST=""
 show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Run tests for the Terminal Server project"
+    echo "Run tests for the Sandbox Server project"
     echo ""
     echo "Options:"
     echo "  -h, --help              Show this help message"
@@ -51,14 +76,6 @@ show_help() {
     echo "  -x, --failfast          Stop on first failure"
     echo "  -t, --test FILE         Run specific test file or test function"
     echo "                          Example: -t tests/test_api.py"
-    echo "                          Example: -t tests/test_api.py::test_function_name"
-    echo ""
-    echo "Examples:"
-    echo "  $0                      # Run all tests"
-    echo "  $0 -u                   # Run only unit tests"
-    echo "  $0 -i -v                # Run integration tests with verbose output"
-    echo "  $0 -c                   # Run all tests with coverage"
-    echo "  $0 -t tests/test_api.py # Run specific test file"
     echo ""
 }
 
@@ -106,7 +123,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Build pytest command
-PYTEST_CMD="pytest"
+PYTEST_CMD="python3 -m pytest"
 
 # Add verbosity
 if [ -n "$VERBOSE" ]; then
@@ -122,10 +139,8 @@ fi
 if [ "$COVERAGE" = "yes" ]; then
     if ! command -v pytest-cov &> /dev/null; then
         echo -e "${YELLOW}Warning: pytest-cov not installed, skipping coverage${NC}"
-        echo "  Install with: pip install pytest-cov"
-        echo ""
     else
-        PYTEST_CMD="$PYTEST_CMD --cov=src --cov=terminal-container --cov-report=term-missing --cov-report=html"
+        PYTEST_CMD="$PYTEST_CMD --cov=src --cov=containers/base --cov-report=term-missing --cov-report=html"
     fi
 fi
 
@@ -141,7 +156,7 @@ elif [ "$MODE" = "integration" ]; then
     PYTEST_CMD="$PYTEST_CMD -m integration"
 else
     echo -e "${YELLOW}Running all tests${NC}"
-    PYTEST_CMD="$PYTEST_CMD tests/ terminal-container/"
+    PYTEST_CMD="$PYTEST_CMD tests/ containers/base/"
 fi
 
 echo ""
@@ -156,13 +171,6 @@ if $PYTEST_CMD; then
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}         ✓ ALL TESTS PASSED${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-    if [ "$COVERAGE" = "yes" ]; then
-        echo ""
-        echo -e "${BLUE}Coverage report saved to: htmlcov/index.html${NC}"
-        echo -e "${BLUE}View with: open htmlcov/index.html${NC}"
-    fi
-
     exit 0
 else
     EXIT_CODE=$?

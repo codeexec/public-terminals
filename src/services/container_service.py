@@ -114,14 +114,17 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to get container stats for {container_id}: {e}")
             return None
 
-    async def create_terminal_container(
-        self, terminal_id: str, use_gpu: bool = False
+    async def create_sandbox_container(
+        self,
+        sandbox_id: str,
+        use_gpu: bool = False,
+        sandbox_type: str = "terminal",
     ) -> Dict[str, str]:
         """
-        Create a new Docker container for terminal.
+        Create a new Docker container for sandbox.
 
         Args:
-            terminal_id: Unique identifier for the terminal
+            sandbox_id: Unique identifier for the sandbox
             use_gpu: Ignored for Docker (GPU only supported on GKE Autopilot)
 
         Returns:
@@ -135,19 +138,29 @@ class DockerContainerService(ContainerServiceInterface):
                 f"Max container limit reached ({settings.MAX_CONTAINERS_PER_SERVER})"
             )
 
-        container_name = f"terminal-{terminal_id}"
+        container_name = f"sandbox-{sandbox_id}"
+
+        # Select the appropriate image based on sandbox_type
+        # Handle both Enum objects and strings, case-insensitive
+        type_str = sandbox_type.value if hasattr(sandbox_type, "value") else str(sandbox_type)
+        type_str = type_str.lower()
+        
+        image = settings.SANDBOX_BASE_IMAGE
+        if type_str == "jupyterlite":
+            image = settings.JUPYTERLITE_IMAGE
 
         try:
             # Generate callback authentication token
-            callback_token = generate_callback_token(terminal_id)
+            callback_token = generate_callback_token(sandbox_id)
 
             # Environment variables to pass to container
             environment = [
-                f"TERMINAL_ID={terminal_id}",
+                f"TERMINAL_ID={sandbox_id}",  # Keep ENV as TERMINAL_ID for container compat for now
                 f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
                 f"CALLBACK_TOKEN={callback_token}",
                 f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
-                f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.TERMINAL_IDLE_TIMEOUT_SECONDS}",
+                f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.SANDBOX_IDLE_TIMEOUT_SECONDS}",
+                f"SANDBOX_TYPE={sandbox_type}",
             ]
 
             # Resource limits
@@ -158,14 +171,15 @@ class DockerContainerService(ContainerServiceInterface):
 
             # Create container using low-level API
             container = self.client.create_container(
-                image=settings.TERMINAL_IMAGE,
+                image=image,
                 name=container_name,
                 environment=environment,
                 detach=True,
                 host_config=host_config,
                 labels={
-                    "app": "terminal-server",
-                    "terminal_id": terminal_id,
+                    "app": "sandbox-server",
+                    "sandbox_id": sandbox_id,
+                    "sandbox_type": sandbox_type,
                 },
                 networking_config=None,
             )
@@ -176,7 +190,7 @@ class DockerContainerService(ContainerServiceInterface):
             self.client.start(container=container_id)
 
             logger.info(
-                f"Created Docker container: {container_id} for terminal {terminal_id}"
+                f"Created Docker container: {container_id} for sandbox {sandbox_id}"
             )
 
             return {
@@ -186,11 +200,11 @@ class DockerContainerService(ContainerServiceInterface):
 
         except Exception as e:
             logger.error(
-                f"Failed to create Docker container for terminal {terminal_id}: {e}"
+                f"Failed to create Docker container for sandbox {sandbox_id}: {e}"
             )
             raise
 
-    async def delete_terminal_container(self, container_id: str) -> bool:
+    async def delete_sandbox_container(self, container_id: str) -> bool:
         """Delete a Docker container"""
         try:
             self.client.stop(container=container_id, timeout=10)
@@ -201,7 +215,7 @@ class DockerContainerService(ContainerServiceInterface):
             logger.error(f"Failed to delete Docker container {container_id}: {e}")
             return False
 
-    async def stop_terminal_container(self, container_id: str) -> bool:
+    async def stop_sandbox_container(self, container_id: str) -> bool:
         """Stop a Docker container for idle timeout"""
         try:
             self.client.stop(container=container_id, timeout=10)
@@ -293,7 +307,7 @@ class KubernetesContainerService(ContainerServiceInterface):
             # We list pods with the specific label and check if they are running or pending (consuming resources)
             pods = self.v1.list_namespaced_pod(
                 namespace=self.namespace,
-                label_selector="app=terminal-server",
+                label_selector="app=sandbox-server",
                 field_selector="status.phase!=Succeeded,status.phase!=Failed",
             )
             return len(pods.items)
@@ -324,15 +338,15 @@ class KubernetesContainerService(ContainerServiceInterface):
                 return None
 
             # Parse metrics
-            # Format example: {'containers': [{'name': 'terminal', 'usage': {'cpu': '10n', 'memory': '10Ki'}}]}
+            # Format example: {'containers': [{'name': 'sandbox', 'usage': {'cpu': '10n', 'memory': '10Ki'}}]}
 
             containers = metrics.get("containers", [])
             if not containers:
                 return None
 
-            # We assume one container per pod named 'terminal'
+            # We assume one container per pod named 'sandbox'
             container_metrics = next(
-                (c for c in containers if c["name"] == "terminal"), containers[0]
+                (c for c in containers if c["name"] == "sandbox"), containers[0]
             )
             usage = container_metrics.get("usage", {})
 
@@ -421,12 +435,14 @@ class KubernetesContainerService(ContainerServiceInterface):
             "cloud.google.com/gke-accelerator-count": str(self.gpu_count),
         }
 
-    def _build_pod_spec(self, terminal_id: str, use_gpu: bool = False):
+    def _build_pod_spec(
+        self, sandbox_id: str, use_gpu: bool = False, sandbox_type: str = "terminal"
+    ):
         """
         Build Kubernetes Pod specification.
 
         Args:
-            terminal_id: The terminal identifier
+            sandbox_id: The sandbox identifier
             use_gpu: Whether to enable GPU for this pod
 
         Returns:
@@ -434,11 +450,20 @@ class KubernetesContainerService(ContainerServiceInterface):
         """
         from kubernetes import client
 
-        pod_name = f"terminal-{terminal_id}"
+        pod_name = f"sandbox-{sandbox_id}"
 
         # Select the appropriate image
-        image = settings.TERMINAL_IMAGE
-        if use_gpu and settings.GPU_TERMINAL_IMAGE:
+        # Handle both Enum objects and strings, case-insensitive
+        type_str = (
+            sandbox_type.value
+            if hasattr(sandbox_type, "value")
+            else str(sandbox_type)
+        ).lower()
+
+        image = settings.SANDBOX_BASE_IMAGE
+        if type_str == "jupyterlite":
+            image = settings.JUPYTERLITE_IMAGE
+        elif use_gpu and settings.GPU_TERMINAL_IMAGE:
             image = settings.GPU_TERMINAL_IMAGE
 
         # Build resource requirements
@@ -449,20 +474,21 @@ class KubernetesContainerService(ContainerServiceInterface):
 
         # Build environment variables
         env_vars = [
-            client.V1EnvVar(name="TERMINAL_ID", value=terminal_id),
+            client.V1EnvVar(name="TERMINAL_ID", value=sandbox_id),
             client.V1EnvVar(
                 name="API_CALLBACK_URL",
                 value=f"{settings.API_BASE_URL}/api/v1/callbacks",
             ),
             client.V1EnvVar(
                 name="CALLBACK_TOKEN",
-                value=generate_callback_token(terminal_id),
+                value=generate_callback_token(sandbox_id),
             ),
             client.V1EnvVar(name="LOCALTUNNEL_HOST", value=settings.LOCALTUNNEL_HOST),
             client.V1EnvVar(
                 name="TERMINAL_IDLE_TIMEOUT_SECONDS",
-                value=str(settings.TERMINAL_IDLE_TIMEOUT_SECONDS),
+                value=str(settings.SANDBOX_IDLE_TIMEOUT_SECONDS),
             ),
+            client.V1EnvVar(name="SANDBOX_TYPE", value=sandbox_type),
         ]
 
         # Add GPU-related env vars if using GPU
@@ -472,15 +498,16 @@ class KubernetesContainerService(ContainerServiceInterface):
 
         # Build labels
         labels = {
-            "app": "terminal-server",
-            "terminal-id": terminal_id,
+            "app": "sandbox-server",
+            "sandbox-id": sandbox_id,
+            "sandbox-type": type_str,
         }
         if use_gpu:
             labels["gpu-enabled"] = "true"
 
         # Build container
         container = client.V1Container(
-            name="terminal",
+            name="sandbox",
             image=image,
             env=env_vars,
             ports=[client.V1ContainerPort(container_port=8888)],
@@ -510,14 +537,17 @@ class KubernetesContainerService(ContainerServiceInterface):
             spec=pod_spec,
         )
 
-    async def create_terminal_container(
-        self, terminal_id: str, use_gpu: bool = False
+    async def create_sandbox_container(
+        self,
+        sandbox_id: str,
+        use_gpu: bool = False,
+        sandbox_type: str = "terminal",
     ) -> Dict[str, str]:
         """
-        Create a new Kubernetes Pod for terminal.
+        Create a new Kubernetes Pod for sandbox.
 
         Args:
-            terminal_id: Unique identifier for the terminal
+            sandbox_id: Unique identifier for the sandbox
             use_gpu: Request GPU-enabled container (GKE Autopilot only)
 
         Returns:
@@ -533,17 +563,17 @@ class KubernetesContainerService(ContainerServiceInterface):
         # Determine if GPU should be used
         should_use_gpu = use_gpu and self.gpu_enabled
 
-        pod_name = f"terminal-{terminal_id}"
+        pod_name = f"sandbox-{sandbox_id}"
 
         # Build pod specification
-        pod_manifest = self._build_pod_spec(terminal_id, should_use_gpu)
+        pod_manifest = self._build_pod_spec(sandbox_id, should_use_gpu, sandbox_type)
 
         try:
             # Create the pod
             self.v1.create_namespaced_pod(namespace=self.namespace, body=pod_manifest)
 
             logger.info(
-                f"Created Kubernetes pod: {pod_name} for terminal {terminal_id} "
+                f"Created Kubernetes pod: {pod_name} for sandbox {sandbox_id} "
                 f"(gpu={should_use_gpu})"
             )
 
@@ -554,11 +584,11 @@ class KubernetesContainerService(ContainerServiceInterface):
 
         except Exception as e:
             logger.error(
-                f"Failed to create Kubernetes pod for terminal {terminal_id}: {e}"
+                f"Failed to create Kubernetes pod for sandbox {sandbox_id}: {e}"
             )
             raise
 
-    async def delete_terminal_container(self, container_id: str) -> bool:
+    async def delete_sandbox_container(self, container_id: str) -> bool:
         """Delete a Kubernetes Pod"""
         try:
             self.v1.delete_namespaced_pod(
@@ -571,7 +601,7 @@ class KubernetesContainerService(ContainerServiceInterface):
             logger.error(f"Failed to delete Kubernetes pod {container_id}: {e}")
             return False
 
-    async def stop_terminal_container(self, container_id: str) -> bool:
+    async def stop_sandbox_container(self, container_id: str) -> bool:
         """Stop a Kubernetes Pod for idle timeout"""
         try:
             self.v1.delete_namespaced_pod(

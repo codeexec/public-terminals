@@ -6,17 +6,17 @@ Protected endpoints for administrative operations
 import logging
 import secrets
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.api.schemas import TerminalListResponse, TerminalResponse
+from src.api.schemas import SandboxListResponse, SandboxResponse
 from src.auth.dependencies import get_current_admin
 from src.auth.schemas import LoginRequest, TokenResponse
 from src.auth.jwt_handler import create_access_token
 from src.config import settings
-from src.database.models import Terminal, TerminalStatus
+from src.database.models import Sandbox, SandboxStatus
 from src.database.session import get_db
 from src.services.container_service import get_container_service
 from src.services.warm_pool_service import get_warm_pool_service
@@ -54,83 +54,83 @@ async def admin_login(login_request: LoginRequest):
     )
 
 
-@router.get("/terminals", response_model=TerminalListResponse)
-async def list_all_terminals(
+@router.get("/sandboxes", response_model=SandboxListResponse)
+async def list_all_sandboxes(
     skip: int = 0,
     limit: int = 100,
     current_admin: str = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     """
-    List ALL terminals (admin-only, not filtered by guest ID)
+    List ALL sandboxes (admin-only, not filtered by guest ID)
 
     This endpoint bypasses the X-Guest-ID filtering used in the public API
-    and returns all terminals regardless of which user created them.
+    and returns all sandboxes regardless of which user created them.
     """
-    query = db.query(Terminal)
+    query = db.query(Sandbox)
 
-    # Exclude deleted terminals
-    query = query.filter(Terminal.deleted_at.is_(None))
+    # Exclude deleted sandboxes
+    query = query.filter(Sandbox.deleted_at.is_(None))
 
     # Order by creation time (newest first)
-    query = query.order_by(Terminal.created_at.desc())
+    query = query.order_by(Sandbox.created_at.desc())
 
     # Get total count
     total = query.count()
 
     # Apply pagination
-    terminals = query.offset(skip).limit(limit).all()
+    sandboxes = query.offset(skip).limit(limit).all()
 
-    logger.info(f"Admin {current_admin} listed {len(terminals)} terminals")
+    logger.info(f"Admin {current_admin} listed {len(sandboxes)} sandboxes")
 
-    return TerminalListResponse(
-        terminals=[TerminalResponse.model_validate(t) for t in terminals],
+    return SandboxListResponse(
+        sandboxes=[SandboxResponse.model_validate(s) for s in sandboxes],
         total=total,
     )
 
 
-@router.delete("/terminals/{terminal_id}", status_code=status.HTTP_200_OK)
-async def admin_delete_terminal(
-    terminal_id: str,
+@router.delete("/sandboxes/{sandbox_id}", status_code=status.HTTP_200_OK)
+async def admin_delete_sandbox(
+    sandbox_id: str,
     current_admin: str = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     """
-    Admin endpoint to terminate any terminal
+    Admin endpoint to terminate any sandbox
 
     Unlike the public delete endpoint, this allows admins to delete
-    any terminal regardless of who created it.
+    any sandbox regardless of who created it.
     """
-    terminal = db.query(Terminal).filter(Terminal.id == terminal_id).first()
+    sandbox = db.query(Sandbox).filter(Sandbox.id == sandbox_id).first()
 
-    if not terminal:
+    if not sandbox:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {terminal_id} not found",
+            detail=f"Sandbox {sandbox_id} not found",
         )
 
     # Soft delete
-    terminal.deleted_at = datetime.now(timezone.utc)
-    terminal.status = TerminalStatus.STOPPED
+    sandbox.deleted_at = datetime.now(timezone.utc)
+    sandbox.status = SandboxStatus.STOPPED
     db.commit()
 
     # Delete container synchronously for admin operations
-    if terminal.container_id:
+    if sandbox.container_id:
         try:
             container_service = get_container_service()
-            await container_service.delete_terminal_container(terminal.container_id)
+            await container_service.delete_sandbox_container(sandbox.container_id)
             logger.info(
-                f"Admin {current_admin} deleted terminal {terminal_id} "
-                f"(container: {terminal.container_id})"
+                f"Admin {current_admin} deleted sandbox {sandbox_id} "
+                f"(container: {sandbox.container_id})"
             )
         except Exception as e:
-            logger.error(f"Failed to delete container {terminal.container_id}: {e}")
+            logger.error(f"Failed to delete container {sandbox.container_id}: {e}")
             # Continue even if container deletion fails
 
     return {
         "status": "success",
-        "terminal_id": terminal.id,
-        "message": "Terminal terminated by admin",
+        "sandbox_id": sandbox.id,
+        "message": "Sandbox terminated by admin",
     }
 
 
@@ -140,7 +140,7 @@ async def get_admin_stats(
     db: Session = Depends(get_db),
 ):
     """
-    Get system and terminal resource statistics
+    Get system and sandbox resource statistics
     """
     try:
         from src.services.stats_service import stats_service
@@ -159,16 +159,16 @@ async def get_admin_stats(
                 "disk": {"total_gb": 0, "used_gb": 0, "percent": 0},
             }
 
-        logger.info("Fetching terminals from DB...")
-        # 2. Get all non-deleted terminals (not just ones with container_id)
+        logger.info("Fetching sandboxes from DB...")
+        # 2. Get all non-deleted sandboxes
         try:
-            active_terminals = (
-                db.query(Terminal)
-                .filter(Terminal.deleted_at.is_(None))
-                .order_by(Terminal.created_at.desc())
+            active_sandboxes = (
+                db.query(Sandbox)
+                .filter(Sandbox.deleted_at.is_(None))
+                .order_by(Sandbox.created_at.desc())
                 .all()
             )
-            logger.info(f"Found {len(active_terminals)} active terminals")
+            logger.info(f"Found {len(active_sandboxes)} active sandboxes")
         except Exception as e:
             logger.error(f"Database query failed: {e}")
             raise HTTPException(
@@ -176,56 +176,45 @@ async def get_admin_stats(
                 detail=f"Database error: {str(e)}",
             )
 
-        # 3. Get list of active terminals (without fetching real-time stats)
-        terminal_stats = []
-        for terminal in active_terminals:
-            t_stats: Dict[str, Any] = {
-                "id": str(terminal.id),
-                "container_id": str(terminal.container_id)
-                if terminal.container_id
-                else None,
-                "user_id": str(terminal.user_id) if terminal.user_id else None,
-                "status": terminal.status.value
-                if hasattr(terminal.status, "value")
-                else str(terminal.status),
-                "created_at": terminal.created_at.isoformat()
-                if terminal.created_at
-                else None,
-                "expires_at": terminal.expires_at.isoformat()
-                if terminal.expires_at
-                else None,
-                "tunnel_url": terminal.tunnel_url,
-                "stats": None,  # Will be fetched lazily by frontend
-            }
-            terminal_stats.append(t_stats)
+        # 3. Get list of active sandboxes
+        from fastapi.encoders import jsonable_encoder
+        sandbox_stats = []
+        for sandbox in active_sandboxes:
+            try:
+                # Use jsonable_encoder to convert datetimes to strings
+                s_dict = jsonable_encoder(SandboxResponse.model_validate(sandbox))
+                # Ensure stats field is present (Frontend expects it, even if None)
+                s_dict["stats"] = None
+                sandbox_stats.append(s_dict)
+            except Exception as e:
+                logger.error(f"Failed to serialize sandbox {sandbox.id}: {e}")
+                continue
 
-        logger.info("Successfully compiled admin stats")
+        logger.info(f"Successfully compiled admin stats for {len(sandbox_stats)} sandboxes")
         return {
             "system": system_stats,
-            "terminals": terminal_stats,
-            "terminal_count": len(active_terminals),
+            "sandboxes": sandbox_stats,
+            "sandbox_count": len(active_sandboxes),
         }
 
     except HTTPException:
         raise
     except Exception as e:
         import traceback
-
-        error_trace = traceback.format_exc()
-        logger.error(f"Unhandled error in get_admin_stats: {e}\n{error_trace}")
+        logger.error(f"Unhandled error in get_admin_stats: {e}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
         )
 
 
-@router.get("/terminals/{container_id}/stats", response_model=Dict)
-async def get_terminal_stats(
+@router.get("/sandboxes/{container_id}/stats", response_model=Dict)
+async def get_sandbox_stats(
     container_id: str,
     current_admin: str = Depends(get_current_admin),
 ):
     """
-    Get resource statistics for a specific terminal container
+    Get resource statistics for a specific sandbox container
     """
     from src.services.stats_service import stats_service
 
