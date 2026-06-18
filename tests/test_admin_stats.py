@@ -1,7 +1,8 @@
 import pytest
+from datetime import datetime
 from unittest.mock import MagicMock, patch, AsyncMock
 from src.api.routes.admin import get_admin_stats
-from src.database.models import Terminal
+from src.database.models import Sandbox, SandboxType
 
 
 @pytest.mark.unit
@@ -12,19 +13,31 @@ async def test_get_admin_stats():
     # Mock DB session
     mock_db = MagicMock()
 
-    # Mock terminal
-    mock_terminal = MagicMock(spec=Terminal)
-    mock_terminal.id = "test-term-1"
-    mock_terminal.container_id = "container-123"
-    mock_terminal.user_id = "user-1"
-    mock_terminal.status = "started"
+    # Mock sandbox
+    mock_sandbox = MagicMock(spec=Sandbox)
+    mock_sandbox.id = "test-term-1"
+    mock_sandbox.type = "terminal"
+    mock_sandbox.status = "started"
+    mock_sandbox.user_id = "user-1"
+    mock_sandbox.container_id = "container-123"
+    mock_sandbox.container_name = "sandbox-container"
+    mock_sandbox.tunnel_url = "http://tunnel.com"
+    mock_sandbox.host_port = "8888"
+    mock_sandbox.created_at = datetime.now()
+    mock_sandbox.updated_at = datetime.now()
+    mock_sandbox.expires_at = None
+    mock_sandbox.last_activity_at = None
+    mock_sandbox.error_message = None
+    mock_sandbox.gpu_enabled = False
+    mock_sandbox.gpu_type = None
+    mock_sandbox.gpu_count = None
 
     # Mock the chain: query -> filter -> order_by -> all
     # Because we added order_by to the production code, we must mock it
     mock_filter = mock_db.query.return_value.filter.return_value
-    mock_filter.order_by.return_value.all.return_value = [mock_terminal]
+    mock_filter.order_by.return_value.all.return_value = [mock_sandbox]
     # Keep this for backward compatibility or if order_by is conditionally skipped (though it isn't here)
-    mock_filter.all.return_value = [mock_terminal]
+    mock_filter.all.return_value = [mock_sandbox]
 
     # Mock stats service
     mock_system_stats = {
@@ -58,20 +71,20 @@ async def test_get_admin_stats():
         assert "system" in result
         assert result["system"] == mock_system_stats
 
-        assert "terminals" in result
-        assert len(result["terminals"]) == 1
-        assert result["terminals"][0]["id"] == "test-term-1"
+        assert "sandboxes" in result
+        assert len(result["sandboxes"]) == 1
+        assert result["sandboxes"][0]["id"] == "test-term-1"
         # Stats are now lazy loaded, so they should be None in the list response
-        assert result["terminals"][0]["stats"] is None
+        assert result["sandboxes"][0]["stats"] is None
 
-        assert "terminal_count" in result
-        assert result["terminal_count"] == 1
+        assert "sandbox_count" in result
+        assert result["sandbox_count"] == 1
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_admin_stats_excludes_deleted():
-    """Test that deleted terminals are excluded from stats"""
+    """Test that deleted sandboxes are excluded from stats"""
     mock_db = MagicMock()
 
     # We can't easily test the SQLAlchemy filter composition with a simple mock,

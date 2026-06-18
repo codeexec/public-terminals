@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Create GKE Autopilot cluster for Terminal Server
+# Create GKE Autopilot cluster for Sandbox Server
 #
 # This script creates a GKE Autopilot cluster with:
 # - Image streaming (automatic on Autopilot for fast container startup)
@@ -19,16 +19,16 @@
 # Environment variables (optional):
 #   GCP_PROJECT_ID    - GCP project ID (default: current gcloud project)
 #   GCP_REGION        - GCP region (default: us-central1)
-#   CLUSTER_NAME      - Cluster name (default: terminals-cluster)
-#   K8S_NAMESPACE     - Kubernetes namespace (default: terminals)
+#   CLUSTER_NAME      - Cluster name (default: sandboxes-cluster)
+#   K8S_NAMESPACE     - Kubernetes namespace (default: sandboxes)
 
 set -euo pipefail
 
 # Configuration with defaults
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${GCP_REGION:-us-central1}"
-CLUSTER_NAME="${CLUSTER_NAME:-terminals-cluster}"
-NAMESPACE="${K8S_NAMESPACE:-terminals}"
+CLUSTER_NAME="${CLUSTER_NAME:-sandboxes-cluster}"
+NAMESPACE="${K8S_NAMESPACE:-sandboxes}"
 
 if [ -z "$PROJECT_ID" ]; then
     echo "Error: GCP_PROJECT_ID not set and no default project configured"
@@ -58,7 +58,6 @@ if gcloud container clusters describe "$CLUSTER_NAME" \
     echo "Skipping cluster creation..."
 else
     echo "Creating GKE Autopilot cluster..."
-    # Note: Workload Identity is enabled by default on Autopilot clusters
     gcloud container clusters create-auto "$CLUSTER_NAME" \
         --project="$PROJECT_ID" \
         --region="$REGION" \
@@ -77,9 +76,9 @@ gcloud container clusters get-credentials "$CLUSTER_NAME" \
 echo "Creating namespace '$NAMESPACE'..."
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-# Create service account for terminal pods
+# Create service account for sandbox pods
 echo "Creating service account..."
-kubectl create serviceaccount terminal-server \
+kubectl create serviceaccount sandbox-server \
     --namespace="$NAMESPACE" \
     --dry-run=client -o yaml | kubectl apply -f -
 
@@ -95,7 +94,7 @@ echo "Nodes (will auto-scale based on workload):"
 kubectl get nodes 2>/dev/null || echo "No nodes yet (Autopilot scales on demand)"
 
 echo ""
-echo "=== Configuration for Terminal Server ==="
+echo "=== Configuration for Sandbox Server ==="
 echo ""
 echo "Add these environment variables to your deployment:"
 echo ""
@@ -107,13 +106,13 @@ echo "  GPU_ENABLED=true"
 echo "  GPU_TYPE=nvidia-l4"
 echo "  GPU_COUNT=1"
 echo ""
-echo "For image streaming, push your terminal image to Artifact Registry:"
-echo "  gcloud artifacts repositories create terminals --repository-format=docker --location=$REGION"
-echo "  docker tag terminal-server:latest $REGION-docker.pkg.dev/$PROJECT_ID/terminals/terminal-server:latest"
-echo "  docker push $REGION-docker.pkg.dev/$PROJECT_ID/terminals/terminal-server:latest"
+echo "For image streaming, push your sandbox image to Artifact Registry:"
+echo "  gcloud artifacts repositories create sandboxes --repository-format=docker --location=$REGION"
+echo "  docker tag terminal-server:latest $REGION-docker.pkg.dev/$PROJECT_ID/sandboxes/terminal-server:latest"
+echo "  docker push $REGION-docker.pkg.dev/$PROJECT_ID/sandboxes/terminal-server:latest"
 echo ""
 echo "Then set:"
-echo "  TERMINAL_IMAGE=$REGION-docker.pkg.dev/$PROJECT_ID/terminals/terminal-server:latest"
+echo "  SANDBOX_BASE_IMAGE=$REGION-docker.pkg.dev/$PROJECT_ID/sandboxes/terminal-server:latest"
 echo ""
 echo "=== GPU Quota ==="
 echo ""

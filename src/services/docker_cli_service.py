@@ -43,7 +43,7 @@ class DockerCLIService(ContainerServiceInterface):
                 "inspect",
                 "-f",
                 "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-                "terminal-server-api",
+                "sandbox-server-api",
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if result.returncode == 0 and result.stdout.strip():
@@ -65,14 +65,17 @@ class DockerCLIService(ContainerServiceInterface):
             logger.warning(f"Could not resolve IP for {url}: {e}")
         return None
 
-    async def create_terminal_container(
-        self, terminal_id: str, use_gpu: bool = False
+    async def create_sandbox_container(
+        self,
+        sandbox_id: str,
+        use_gpu: bool = False,
+        sandbox_type: str = "terminal",
     ) -> Dict[str, str]:
         """
-        Create a new Docker container for terminal.
+        Create a new Docker container for sandbox.
 
         Args:
-            terminal_id: Unique identifier for the terminal
+            sandbox_id: Unique identifier for the sandbox
             use_gpu: Ignored for Docker (GPU only supported on GKE Autopilot)
         """
         # Note: use_gpu is ignored for Docker containers
@@ -83,7 +86,12 @@ class DockerCLIService(ContainerServiceInterface):
                 f"Max container limit reached ({settings.MAX_CONTAINERS_PER_SERVER})"
             )
 
-        container_name = f"terminal-{terminal_id}"
+        container_name = f"sandbox-{sandbox_id}"
+
+        # Select image
+        image = settings.SANDBOX_BASE_IMAGE
+        if sandbox_type == "jupyterlite":
+            image = settings.JUPYTERLITE_IMAGE
 
         # Dynamically resolve IPs
         api_ip = self._get_api_server_ip()
@@ -91,10 +99,9 @@ class DockerCLIService(ContainerServiceInterface):
         lt_ip = self._get_host_ip(settings.LOCALTUNNEL_HOST)
 
         # Create custom resolv.conf for gVisor to bypass Docker DNS (127.0.0.11)
-        # Only needed when using gVisor runtime
         host_resolv_path = None
         if settings.USE_GVISOR:
-            resolv_filename = f"resolv-{terminal_id}.conf"
+            resolv_filename = f"resolv-{sandbox_id}.conf"
             container_resolv_path = (
                 f"{settings.RESOLV_CONF_CONTAINER_DIR}/{resolv_filename}"
             )
@@ -106,44 +113,42 @@ class DockerCLIService(ContainerServiceInterface):
                     f.write("nameserver 8.8.4.4\n")
                     f.write("options ndots:0\n")
                 logger.info(
-                    f"Created custom resolv.conf for gVisor container {terminal_id}"
+                    f"Created custom resolv.conf for gVisor container {sandbox_id}"
                 )
             except Exception as e:
                 logger.warning(f"Failed to create custom resolv.conf: {e}")
                 host_resolv_path = None
 
-        # Generate callback token for this terminal
-        callback_token = generate_callback_token(terminal_id)
+        # Generate callback token for this sandbox
+        callback_token = generate_callback_token(sandbox_id)
 
         try:
             # Build docker run command with port mapping
-            # -p 0:8888 maps container port 8888 to a random available host port
-            # --network connects to the same network as the API container
             cmd = [
                 "docker",
                 "run",
-                "-d",  # Detach
+                "-d",
             ]
 
             # Add gVisor runtime if enabled
             if settings.USE_GVISOR:
-                cmd.extend(["--runtime=runsc"])  # Use gVisor for sandboxing
-                logger.info(f"Using gVisor runtime for container {terminal_id}")
+                cmd.extend(["--runtime=runsc"])
+                logger.info(f"Using gVisor runtime for container {sandbox_id}")
             else:
-                logger.info(f"Using default runtime for container {terminal_id}")
+                logger.info(f"Using default runtime for container {sandbox_id}")
 
             cmd.extend(
                 [
                     "--name",
                     container_name,
                     "--network",
-                    settings.DOCKER_NETWORK,  # Use same network as API
+                    settings.DOCKER_NETWORK,
                     "--memory",
                     settings.CONTAINER_MEMORY_LIMIT,
                     "--cpus",
                     str(settings.CONTAINER_CPU_LIMIT),
                     "-p",
-                    "0:8888",  # Map to random host port
+                    "0:8888",
                 ]
             )
 
@@ -151,7 +156,6 @@ class DockerCLIService(ContainerServiceInterface):
             if host_resolv_path:
                 cmd.extend(["-v", f"{host_resolv_path}:/etc/resolv.conf:ro"])
             else:
-                # Fallback to --dns flags (less reliable with gVisor)
                 cmd.extend(["--dns", "8.8.8.8", "--dns", "8.8.4.4"])
 
             cmd.extend(
@@ -168,7 +172,7 @@ class DockerCLIService(ContainerServiceInterface):
             cmd.extend(
                 [
                     "-e",
-                    f"TERMINAL_ID={terminal_id}",
+                    f"TERMINAL_ID={sandbox_id}",
                     "-e",
                     f"API_CALLBACK_URL={settings.API_BASE_URL}/api/v1/callbacks",
                     "-e",
@@ -176,12 +180,16 @@ class DockerCLIService(ContainerServiceInterface):
                     "-e",
                     f"LOCALTUNNEL_HOST={settings.LOCALTUNNEL_HOST}",
                     "-e",
-                    f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.TERMINAL_IDLE_TIMEOUT_SECONDS}",
+                    f"TERMINAL_IDLE_TIMEOUT_SECONDS={settings.SANDBOX_IDLE_TIMEOUT_SECONDS}",
+                    "-e",
+                    f"SANDBOX_TYPE={sandbox_type}",
                     "--label",
-                    "app=terminal-server",
+                    "app=sandbox-server",
                     "--label",
-                    f"terminal_id={terminal_id}",
-                    settings.TERMINAL_IMAGE,
+                    f"sandbox_id={sandbox_id}",
+                    "--label",
+                    f"sandbox_type={sandbox_type}",
+                    image,
                 ]
             )
 
@@ -200,13 +208,12 @@ class DockerCLIService(ContainerServiceInterface):
 
                 host_port = ""
                 if port_result.returncode == 0:
-                    # Output format: "0.0.0.0:PORT" or "[::]:PORT"
                     port_output = port_result.stdout.strip()
                     if ":" in port_output:
                         host_port = port_output.split(":")[-1]
 
                 logger.info(
-                    f"Created Docker container: {container_id} for terminal {terminal_id}, host port: {host_port}"
+                    f"Created Docker container: {container_id} for sandbox {sandbox_id}, host port: {host_port}"
                 )
 
                 return {
@@ -219,14 +226,14 @@ class DockerCLIService(ContainerServiceInterface):
 
         except Exception as e:
             logger.error(
-                f"Failed to create Docker container for terminal {terminal_id}: {e}"
+                f"Failed to create Docker container for sandbox {sandbox_id}: {e}"
             )
             raise
 
-    async def delete_terminal_container(self, container_id: str) -> bool:
+    async def delete_sandbox_container(self, container_id: str) -> bool:
         """Delete a Docker container"""
         try:
-            # Get terminal_id from container name to clean up resolv.conf (if using gVisor)
+            # Get sandbox_id from container name to clean up resolv.conf (if using gVisor)
             if settings.USE_GVISOR:
                 inspect_result = subprocess.run(
                     ["docker", "inspect", "--format", "{{.Name}}", container_id],
@@ -236,13 +243,13 @@ class DockerCLIService(ContainerServiceInterface):
                 )
                 if inspect_result.returncode == 0:
                     container_name = inspect_result.stdout.strip().lstrip("/")
-                    if container_name.startswith("terminal-"):
-                        terminal_id = container_name.replace("terminal-", "")
-                        container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{terminal_id}.conf"
+                    if container_name.startswith("sandbox-"):
+                        sandbox_id = container_name.replace("sandbox-", "")
+                        container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{sandbox_id}.conf"
                         try:
                             if os.path.exists(container_resolv_path):
                                 os.remove(container_resolv_path)
-                                logger.info(f"Cleaned up resolv.conf for {terminal_id}")
+                                logger.info(f"Cleaned up resolv.conf for {sandbox_id}")
                         except Exception as e:
                             logger.warning(f"Failed to cleanup resolv.conf: {e}")
 
@@ -269,10 +276,10 @@ class DockerCLIService(ContainerServiceInterface):
             logger.error(f"Failed to delete Docker container {container_id}: {e}")
             return False
 
-    async def stop_terminal_container(self, container_id: str) -> bool:
+    async def stop_sandbox_container(self, container_id: str) -> bool:
         """Stop a Docker container for idle timeout"""
         try:
-            # Get terminal_id from container name to clean up resolv.conf (if using gVisor)
+            # Get sandbox_id from container name to clean up resolv.conf (if using gVisor)
             if settings.USE_GVISOR:
                 inspect_result = subprocess.run(
                     ["docker", "inspect", "--format", "{{.Name}}", container_id],
@@ -282,13 +289,13 @@ class DockerCLIService(ContainerServiceInterface):
                 )
                 if inspect_result.returncode == 0:
                     container_name = inspect_result.stdout.strip().lstrip("/")
-                    if container_name.startswith("terminal-"):
-                        terminal_id = container_name.replace("terminal-", "")
-                        container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{terminal_id}.conf"
+                    if container_name.startswith("sandbox-"):
+                        sandbox_id = container_name.replace("sandbox-", "")
+                        container_resolv_path = f"{settings.RESOLV_CONF_CONTAINER_DIR}/resolv-{sandbox_id}.conf"
                         try:
                             if os.path.exists(container_resolv_path):
                                 os.remove(container_resolv_path)
-                                logger.info(f"Cleaned up resolv.conf for {terminal_id}")
+                                logger.info(f"Cleaned up resolv.conf for {sandbox_id}")
                         except Exception as e:
                             logger.warning(f"Failed to cleanup resolv.conf: {e}")
 
@@ -357,15 +364,14 @@ class DockerCLIService(ContainerServiceInterface):
             return None
 
     async def count_active_containers(self) -> int:
-        """Count number of active terminal containers"""
+        """Count number of active sandbox containers"""
         try:
-            # Count containers with label app=terminal-server
-            # We filter by status=running to only count active ones
+            # Count containers with label app=sandbox-server
             cmd = [
                 "docker",
                 "ps",
                 "--filter",
-                "label=app=terminal-server",
+                "label=app=sandbox-server",
                 "--filter",
                 "status=running",
                 "--format",
@@ -375,7 +381,6 @@ class DockerCLIService(ContainerServiceInterface):
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
             if result.returncode == 0:
-                # Count the number of lines (one ID per line)
                 output = result.stdout.strip()
                 if not output:
                     return 0
@@ -391,9 +396,6 @@ class DockerCLIService(ContainerServiceInterface):
     async def get_container_stats(self, container_id: str) -> Optional[Dict]:
         """Get container resource usage statistics"""
         try:
-            # Use docker stats --no-stream to get a snapshot
-            # Format: {{.CPUPerc}},{{.MemUsage}},{{.MemPerc}}
-            # Example output: 0.05%,10MiB / 1GiB,1.00%
             cmd = [
                 "docker",
                 "stats",
@@ -406,17 +408,12 @@ class DockerCLIService(ContainerServiceInterface):
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
             if result.returncode == 0 and result.stdout.strip():
-                # Parse output
-                # Output might contain headers if not formatted correctly, but --format handles that
                 parts = result.stdout.strip().split(",")
                 if len(parts) >= 3:
                     cpu_str = parts[0].strip().replace("%", "")
-                    mem_usage_str = (
-                        parts[1].strip().split("/")[0].strip()
-                    )  # "10MiB / 1GiB" -> "10MiB"
+                    mem_usage_str = parts[1].strip().split("/")[0].strip()
                     mem_perc_str = parts[2].strip().replace("%", "")
 
-                    # Helper to convert memory string to MB
                     def parse_memory(mem_str):
                         mem_str = mem_str.upper()
                         if "GIB" in mem_str or "GB" in mem_str:

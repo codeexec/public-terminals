@@ -1,5 +1,5 @@
 """
-Integration tests for Terminal Server API
+Integration tests for Sandbox Server API
 These tests require the API server to be running
 """
 
@@ -22,25 +22,25 @@ def test_health():
 
 
 @pytest.mark.integration
-def test_list_terminals():
-    """Test listing terminals"""
-    response = requests.get(f"{API_BASE}/api/v1/terminals")
+def test_list_sandboxes():
+    """Test listing sandboxes"""
+    response = requests.get(f"{API_BASE}/api/v1/sandboxes")
     assert response.status_code == 200
     data = response.json()
-    assert "terminals" in data
+    assert "sandboxes" in data
     assert "total" in data
-    assert isinstance(data["terminals"], list)
+    assert isinstance(data["sandboxes"], list)
     assert isinstance(data["total"], int)
 
 
 @pytest.mark.integration
-def test_create_terminal():
-    """Test terminal creation"""
-    response = requests.post(f"{API_BASE}/api/v1/terminals", json={})
+def test_create_sandbox():
+    """Test sandbox creation"""
+    response = requests.post(f"{API_BASE}/api/v1/sandboxes", json={})
     assert response.status_code == 202
     data = response.json()
 
-    terminal_id = data.get("id")
+    sandbox_id = data.get("id")
 
     try:
         assert "id" in data
@@ -48,45 +48,45 @@ def test_create_terminal():
         assert "expires_at" in data
         assert data["status"] in ["pending", "starting", "started"]
     finally:
-        if terminal_id:
+        if sandbox_id:
             try:
-                requests.delete(f"{API_BASE}/api/v1/terminals/{terminal_id}")
+                requests.delete(f"{API_BASE}/api/v1/sandboxes/{sandbox_id}")
             except Exception:
                 pass  # Ignore cleanup errors
 
 
 @pytest.fixture
-def terminal_id() -> Generator[str, None, None]:
-    """Fixture to create a terminal and return its ID"""
-    response = requests.post(f"{API_BASE}/api/v1/terminals", json={})
+def sandbox_id() -> Generator[str, None, None]:
+    """Fixture to create a sandbox and return its ID"""
+    response = requests.post(f"{API_BASE}/api/v1/sandboxes", json={})
     assert response.status_code == 202
     data = response.json()
-    terminal_id = data["id"]
+    sandbox_id = data["id"]
 
-    yield terminal_id
+    yield sandbox_id
 
-    # Cleanup: delete the terminal after test
+    # Cleanup: delete the sandbox after test
     try:
-        requests.delete(f"{API_BASE}/api/v1/terminals/{terminal_id}")
+        requests.delete(f"{API_BASE}/api/v1/sandboxes/{sandbox_id}")
     except Exception:
         pass  # Ignore cleanup errors
 
 
 @pytest.mark.integration
-def test_get_terminal(terminal_id: str):
-    """Test getting terminal details"""
-    response = requests.get(f"{API_BASE}/api/v1/terminals/{terminal_id}")
+def test_get_sandbox(sandbox_id: str):
+    """Test getting sandbox details"""
+    response = requests.get(f"{API_BASE}/api/v1/sandboxes/{sandbox_id}")
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == terminal_id
+    assert data["id"] == sandbox_id
     assert "status" in data
     assert "container_id" in data
 
 
 @pytest.mark.integration
-def test_delete_terminal(terminal_id: str):
-    """Test terminal deletion"""
-    response = requests.delete(f"{API_BASE}/api/v1/terminals/{terminal_id}")
+def test_delete_sandbox(sandbox_id: str):
+    """Test sandbox deletion"""
+    response = requests.delete(f"{API_BASE}/api/v1/sandboxes/{sandbox_id}")
     assert response.status_code == 200
     data = response.json()
     assert "message" in data
@@ -94,13 +94,13 @@ def test_delete_terminal(terminal_id: str):
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_wait_for_terminal_startup(terminal_id: str):
-    """Test waiting for terminal to start (slow test)"""
+def test_wait_for_sandbox_startup(sandbox_id: str):
+    """Test waiting for sandbox to start (slow test)"""
     max_wait = 120
     start_time = time.time()
 
     while time.time() - start_time < max_wait:
-        response = requests.get(f"{API_BASE}/api/v1/terminals/{terminal_id}")
+        response = requests.get(f"{API_BASE}/api/v1/sandboxes/{sandbox_id}")
         data = response.json()
 
         if data["status"] == "started":
@@ -109,8 +109,8 @@ def test_wait_for_terminal_startup(terminal_id: str):
             return
 
         if data["status"] == "failed":
-            pytest.fail(f"Terminal failed to start: {data.get('error_message')}")
+            pytest.fail(f"Sandbox failed to start: {data.get('error_message')}")
 
         time.sleep(5)
 
-    pytest.fail(f"Terminal did not start within {max_wait} seconds")
+    pytest.fail(f"Sandbox did not start within {max_wait} seconds")

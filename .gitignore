@@ -72,5 +72,5 @@ temp/
 # Nginx
 nginx/certs/
 
-# Terminal container temp files
-terminal-container/tmp-resolv/
+# Sandbox container temp files
+containers/base/tmp-resolv/

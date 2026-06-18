@@ -22,13 +22,13 @@ celery_app.conf.update(
 
 # Periodic task schedule
 celery_app.conf.beat_schedule = {
-    "cleanup-expired-terminals": {
+    "cleanup-expired-sandboxes": {
         "task": "src.services.cleanup_service.run_cleanup_task",
         "schedule": crontab(
             minute=f"*/{settings.CLEANUP_INTERVAL_MINUTES}"
         ),  # Every N minutes
     },
-    "cleanup-idle-terminals": {
+    "cleanup-idle-sandboxes": {
         "task": "src.services.cleanup_service.run_idle_timeout_task",
         "schedule": crontab(
             minute=f"*/{settings.CLEANUP_INTERVAL_MINUTES}"

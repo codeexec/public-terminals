@@ -27,8 +27,8 @@ def create_app():
     logger = configure_logging()
 
     app = FastAPI(
-        title="Terminal Server Web UI",
-        description="Web interface for terminal management",
+        title="Sandbox Server Web UI",
+        description="Web interface for sandbox management",
         version="1.0.0",
     )
 
@@ -69,7 +69,7 @@ def main():
     """Main entry point"""
 
     logger = configure_logging()
-    logger.info("Starting Terminal Server Web UI")
+    logger.info("Starting Sandbox Server Web UI")
     logger.info(
         f"Web UI will be available at http://{settings.WEB_HOST}:{settings.WEB_PORT}"
     )

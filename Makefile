@@ -1,10 +1,10 @@
-.PHONY: help build-terminal build-api up down logs clean test test-full test-api setup shell
+.PHONY: help build-base build-api up down logs clean test test-full test-api setup shell
 
 help:
-	@echo "Terminal Server - Available Commands:"
+	@echo "Sandbox Server - Available Commands:"
 	@echo ""
 	@echo "Build & Deploy:"
-	@echo "  make build-terminal  - Build terminal container image"
+	@echo "  make build-base      - Build base sandbox container image"
 	@echo "  make build-api       - Build API server image"
 	@echo "  make up              - Start all services"
 	@echo "  make down            - Stop all services"
@@ -17,7 +17,7 @@ help:
 	@echo "  make logs-celery     - View Celery worker logs"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test            - Quick API test (create terminal)"
+	@echo "  make test            - Quick API test (create workspace)"
 	@echo "  make test-full       - Full integration test (bash script)"
 	@echo "  make test-api        - Run Python API tests"
 	@echo ""
@@ -26,17 +26,17 @@ help:
 	@echo "  make db-shell        - Open PostgreSQL shell"
 	@echo "  make clean           - Remove all containers and volumes"
 
-build-terminal:
-	@echo "Building terminal container image..."
-	cd terminal-container && docker build -t terminal-server:latest .
-	@echo "Terminal container image built successfully!"
+build-base:
+	@echo "Building base sandbox container image..."
+	cd containers/base && docker build -t terminal-server:latest .
+	@echo "Base sandbox image built successfully!"
 
 build-api:
 	@echo "Building API server image..."
-	docker build -f Dockerfile -t terminal-api:latest .
+	docker build -f Dockerfile -t sandbox-api:latest .
 	@echo "API server image built successfully!"
 
-build: build-terminal build-api
+build: build-base build-api
 
 up:
 	@echo "Starting services..."
@@ -69,10 +69,10 @@ clean:
 	@echo "Cleanup complete!"
 
 test:
-	@echo "Creating test terminal..."
-	@curl -X POST http://localhost:8000/api/v1/terminals -H "Content-Type: application/json" -d '{}' | jq
-	@echo "\nList all terminals:"
-	@curl -s http://localhost:8000/api/v1/terminals | jq
+	@echo "Creating test workspace..."
+	@curl -X POST http://localhost:8000/api/v1/sandboxes -H "Content-Type: application/json" -d '{}' | jq
+	@echo "\nList all workspaces:"
+	@curl -s http://localhost:8000/api/v1/sandboxes | jq
 
 test-full:
 	@echo "Running full integration test..."
@@ -90,7 +90,7 @@ shell:
 	docker compose exec api-server /bin/bash
 
 db-shell:
-	docker compose exec postgres psql -U postgres -d terminal_server
+	docker compose exec postgres psql -U postgres -d sandbox_server
 
 init:
 	@echo "Initializing project..."

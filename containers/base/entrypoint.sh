@@ -15,7 +15,7 @@ report_error() {
         curl -s -X POST "${API_CALLBACK_URL}/status" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${CALLBACK_TOKEN}" \
-            -d "{\"terminal_id\": \"${TERMINAL_ID}\", \"status\": \"failed\", \"error_message\": \"${msg}\"}" || true
+            -d "{\"sandbox_id\": \"${TERMINAL_ID}\", \"status\": \"failed\", \"error_message\": \"${msg}\"}" || true
     fi
     exit 1
 }
@@ -66,12 +66,12 @@ update_status() {
         curl -s --max-time 5 -X POST "${API_CALLBACK_URL}/tunnel" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${CALLBACK_TOKEN}" \
-            -d "{\"terminal_id\": \"$TERMINAL_ID\", \"tunnel_url\": \"$url\"}" >/dev/null 2>&1 || log "Warning: API callback failed"
+            -d "{\"sandbox_id\": \"$TERMINAL_ID\", \"tunnel_url\": \"$url\"}" >/dev/null 2>&1 || log "Warning: API callback failed"
     fi
 }
 
 main() {
-    log "Starting Terminal Container (ID: ${TERMINAL_ID:-unknown})"
+    log "Starting Sandbox Workspace (ID: ${TERMINAL_ID:-unknown})"
 
     # Clear any stale tunnel file
     rm -f "$TUNNEL_FILE"
@@ -110,7 +110,7 @@ main() {
     tunnel_url=$(get_tunnel_url 60)
     update_status "$tunnel_url"
 
-    log "Terminal ready at: $tunnel_url"
+    log "Sandbox ready at: $tunnel_url"
 
     # Health check loop with longer intervals (less CPU overhead)
     while true; do

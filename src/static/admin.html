@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Terminal Manager</title>
+    <title>Admin - Sandbox Manager</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
@@ -80,7 +80,7 @@
                         <i class="bi bi-shield-check"></i> Admin Dashboard
                         <span class="admin-badge">ADMIN</span>
                     </h1>
-                    <small class="text-muted">Viewing all terminals across all users</small>
+                    <small class="text-muted">Viewing all sandboxes across all users</small>
                 </div>
                 <div class="col-auto">
                     <button id="refresh-btn" class="btn btn-outline-light me-2">
@@ -184,15 +184,16 @@
                 </div>
             </div>
 
-            <!-- Terminals Table -->
+            <!-- Sandboxes Table -->
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">All Terminals</h5>
+                    <h5 class="card-title">All Sandboxes</h5>
                     <div class="table-responsive">
                         <table class="table table-dark table-hover">
                             <thead>
                                 <tr>
                                     <th>ID</th>
+                                    <th>Type</th>
                                     <th>User ID</th>
                                     <th>Status</th>
                                     <th>Created</th>
@@ -202,10 +203,10 @@
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody id="terminals-table-body">
+                            <tbody id="sandboxes-table-body">
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted">
-                                        Loading terminals...
+                                    <td colspan="8" class="text-center text-muted">
+                                        Loading sandboxes...
                                     </td>
                                 </tr>
                             </tbody>
@@ -226,7 +227,7 @@
         // State management
         let authToken = localStorage.getItem('admin_token');
         let autoRefreshInterval = null;
-        let statsCache = {}; // Cache for terminal stats
+        let statsCache = {}; // Cache for sandbox stats
 
         // Security: HTML escaping function to prevent XSS
         function escapeHtml(unsafe) {
@@ -284,15 +285,8 @@
             if (!date) return 'N/A';
             const seconds = Math.floor((new Date(date) - new Date()) / 1000);
 
-            // If already expired
-            if (seconds < 0) {
-                return 'expired';
-            }
-            
-            // If more than 24 hours, show days
-            if (seconds > 86400) {
-                 return `in ${Math.floor(seconds / 86400)} days`;
-            }
+            if (seconds < 0) return 'expired';
+            if (seconds > 86400) return `in ${Math.floor(seconds / 86400)} days`;
 
             const intervals = {
                 hour: 3600,
@@ -333,7 +327,7 @@
                     authToken = data.access_token;
                     localStorage.setItem('admin_token', authToken);
                     showAdminView();
-                    loadTerminals();
+                    loadSandboxes();
                     startAutoRefresh();
                 } else {
                     const error = await response.json();
@@ -362,9 +356,8 @@
         }
 
         // API functions with JWT
-        async function loadTerminals() {
+        async function loadSandboxes() {
             try {
-                // Fetch stats which includes terminals list and system info
                 const response = await fetch(`${API_BASE}/admin/stats`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -380,10 +373,9 @@
                 if (response.ok) {
                     const data = await response.json();
                     renderSystemStats(data.system);
-                    renderTerminals(data.terminals);
-                    updateSummaryStats(data.terminals);
-                    // Fetch resource stats lazily
-                    loadResourceStats(data.terminals);
+                    renderSandboxes(data.sandboxes);
+                    updateSummaryStats(data.sandboxes);
+                    loadResourceStats(data.sandboxes);
                 } else {
                     showAlert('Failed to load stats', 'danger', 'admin-alert-area');
                 }
@@ -392,25 +384,24 @@
             }
         }
 
-        async function loadResourceStats(terminals) {
-            // Process in batches of 5 to avoid overwhelming the server
+        async function loadResourceStats(sandboxes) {
             const batchSize = 5;
-            for (let i = 0; i < terminals.length; i += batchSize) {
-                const batch = terminals.slice(i, i + batchSize);
-                const promises = batch.map(async (t) => {
-                    if (!t.container_id) return;
+            for (let i = 0; i < sandboxes.length; i += batchSize) {
+                const batch = sandboxes.slice(i, i + batchSize);
+                const promises = batch.map(async (s) => {
+                    if (!s.container_id) return;
                     
                     try {
-                        const response = await fetch(`${API_BASE}/admin/terminals/${t.container_id}/stats`, {
+                        const response = await fetch(`${API_BASE}/admin/sandboxes/${s.container_id}/stats`, {
                             headers: { 'Authorization': `Bearer ${authToken}` }
                         });
                         
                         if (response.ok) {
                             const stats = await response.json();
-                            updateTerminalStatsRow(t.id, stats);
+                            updateSandboxStatsRow(s.id, stats);
                         }
                     } catch (e) {
-                        console.error(`Failed to load stats for ${t.id}`, e);
+                        console.error(`Failed to load stats for ${s.id}`, e);
                     }
                 });
                 
@@ -418,11 +409,10 @@
             }
         }
 
-        function updateTerminalStatsRow(terminalId, stats) {
-            // Update cache
-            statsCache[terminalId] = stats;
+        function updateSandboxStatsRow(sandboxId, stats) {
+            statsCache[sandboxId] = stats;
 
-            const cell = document.getElementById(`resources-${terminalId}`);
+            const cell = document.getElementById(`resources-${sandboxId}`);
             if (!cell) return;
 
             if (stats.error) {
@@ -430,7 +420,6 @@
                 return;
             }
 
-            // Compact display with sanitized values
             const cpuPercent = sanitizeNumber(stats.cpu_percent, 1);
             const memoryMb = Math.round(parseFloat(stats.memory_mb) || 0);
             cell.innerHTML = `
@@ -441,10 +430,9 @@
             `;
         }
 
-        async function startTerminal(terminalId) {
+        async function startSandbox(sandboxId) {
             try {
-                // Using public endpoint to start terminal
-                const response = await fetch(`${API_BASE}/terminals/${terminalId}/start`, {
+                const response = await fetch(`${API_BASE}/sandboxes/${sandboxId}/start`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -457,22 +445,22 @@
                 }
 
                 if (response.ok) {
-                    showAlert('Terminal restart initiated', 'success', 'admin-alert-area');
-                    loadTerminals();
+                    showAlert('Sandbox restart initiated', 'success', 'admin-alert-area');
+                    loadSandboxes();
                 } else {
                     const err = await response.json();
-                    showAlert('Failed to start terminal: ' + (err.detail || 'Unknown error'), 'danger', 'admin-alert-area');
+                    showAlert('Failed to start sandbox: ' + (err.detail || 'Unknown error'), 'danger', 'admin-alert-area');
                 }
             } catch (error) {
                 showAlert('Error: ' + error.message, 'danger', 'admin-alert-area');
             }
         }
 
-        async function deleteTerminal(terminalId) {
-            if (!confirm('Are you sure you want to terminate this terminal?')) return;
+        async function deleteSandbox(sandboxId) {
+            if (!confirm('Are you sure you want to terminate this sandbox?')) return;
 
             try {
-                const response = await fetch(`${API_BASE}/admin/terminals/${terminalId}`, {
+                const response = await fetch(`${API_BASE}/admin/sandboxes/${sandboxId}`, {
                     method: 'DELETE',
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -485,10 +473,10 @@
                 }
 
                 if (response.ok) {
-                    showAlert('Terminal terminated successfully', 'success', 'admin-alert-area');
-                    loadTerminals();
+                    showAlert('Sandbox terminated successfully', 'success', 'admin-alert-area');
+                    loadSandboxes();
                 } else {
-                    showAlert('Failed to terminate terminal', 'danger', 'admin-alert-area');
+                    showAlert('Failed to terminate sandbox', 'danger', 'admin-alert-area');
                 }
             } catch (error) {
                 showAlert('Error: ' + error.message, 'danger', 'admin-alert-area');
@@ -498,102 +486,80 @@
         // Rendering functions
         function renderSystemStats(sys) {
             if (!sys) return;
-            
-            // CPU
             document.getElementById('sys-cpu-percent').textContent = `${sys.cpu.percent}%`;
             document.getElementById('sys-cpu-bar').style.width = `${sys.cpu.percent}%`;
             document.getElementById('sys-cpu-cores').textContent = sys.cpu.cores;
-            
-            // Memory
             document.getElementById('sys-mem-percent').textContent = `${sys.memory.percent}%`;
             document.getElementById('sys-mem-bar').style.width = `${sys.memory.percent}%`;
             document.getElementById('sys-mem-used').textContent = sys.memory.used_gb;
             document.getElementById('sys-mem-total').textContent = sys.memory.total_gb;
-            
-            // Disk
             document.getElementById('sys-disk-percent').textContent = `${sys.disk.percent}%`;
             document.getElementById('sys-disk-bar').style.width = `${sys.disk.percent}%`;
             document.getElementById('sys-disk-used').textContent = sys.disk.used_gb;
             document.getElementById('sys-disk-total').textContent = sys.disk.total_gb;
         }
 
-        function renderTerminals(terminals) {
-            const tbody = document.getElementById('terminals-table-body');
+        function renderSandboxes(sandboxes) {
+            const tbody = document.getElementById('sandboxes-table-body');
 
-            if (terminals.length === 0) {
+            if (sandboxes.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center text-muted">
-                            No terminals found
-                        </td>
+                        <td colspan="8" class="text-center text-muted">No sandboxes found</td>
                     </tr>
                 `;
                 return;
             }
 
-            tbody.innerHTML = terminals.map(t => {
-                // Sanitize all user-controlled data
-                const terminalId = escapeHtml(t.id);
-                const userId = escapeHtml(t.user_id);
-                const containerId = escapeHtml(t.container_id);
-                const tunnelUrl = escapeHtml(t.tunnel_url);
+            tbody.innerHTML = sandboxes.map(s => {
+                const sandboxId = escapeHtml(s.id);
+                const userId = escapeHtml(s.user_id);
+                const containerId = escapeHtml(s.container_id);
+                const tunnelUrl = escapeHtml(s.tunnel_url);
+                const isExpired = s.expires_at && new Date(s.expires_at) < new Date();
+                const statusValue = escapeHtml(s.status).toLowerCase();
+                const status = isExpired ? 'expired' : statusValue;
+                const statusClass = `status-${status}`;
 
-                // Check if terminal is expired
-                const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
-
-                // Override status to 'expired' if terminal is expired
-                const status = isExpired ? 'expired' : escapeHtml(t.status);
-                const statusClass = `status-${status.toLowerCase()}`;
-
-                // Resources: Use cache or loader
                 let resourceHtml;
-                if (statsCache[t.id]) {
-                    const stats = statsCache[t.id];
+                if (statsCache[s.id]) {
+                    const stats = statsCache[s.id];
                     const cpuPercent = sanitizeNumber(stats.cpu_percent, 1);
                     const memoryMb = Math.round(parseFloat(stats.memory_mb) || 0);
                     resourceHtml = `
-                        <div id="resources-${terminalId}" style="line-height: 1.2; font-size: 0.85rem;">
+                        <div id="resources-${sandboxId}" style="line-height: 1.2; font-size: 0.85rem;">
                             <span class="text-nowrap me-2"><i class="bi bi-cpu"></i> ${cpuPercent}%</span>
                             <span class="text-nowrap"><i class="bi bi-memory"></i> ${memoryMb}MB</span>
                         </div>
                     `;
                 } else {
-                    resourceHtml = `<div id="resources-${terminalId}" class="text-muted small">
+                    resourceHtml = `<div id="resources-${sandboxId}" class="text-muted small">
                         <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
                     </div>`;
                 }
 
-                // User ID display with sanitization
-                const userIdDisplay = t.user_id
+                const userIdDisplay = s.user_id
                     ? `<code class="text-muted">${userId.substring(0, 8)}...</code>`
                     : '<span class="badge bg-secondary">Guest</span>';
 
-                // Actions: Validate URL and use data attribute for deleteTerminal
                 let actionsHtml = '';
-
-                // For expired terminals, only show delete button for cleanup
-                if (isExpired) {
-                    actionsHtml += `<button data-terminal-id="${terminalId}" class="btn btn-sm btn-outline-danger delete-terminal-btn" title="Delete">
+                if (status === 'expired') {
+                    actionsHtml += `<button data-sandbox-id="${sandboxId}" class="btn btn-sm btn-outline-danger delete-sandbox-btn" title="Delete">
                         <i class="bi bi-trash"></i>
                     </button>`;
                 } else {
-                    // Open Terminal button - only for started terminals with tunnel URL
-                    if (t.tunnel_url && isSafeUrl(t.tunnel_url) && t.status === 'started') {
-                        actionsHtml += `<a href="${tunnelUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary me-1" title="Open Terminal">
+                    if (s.tunnel_url && isSafeUrl(s.tunnel_url) && status === 'started') {
+                        actionsHtml += `<a href="${tunnelUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary me-1" title="Open Workspace">
                             <i class="bi bi-box-arrow-up-right"></i>
                         </a>`;
                     }
-
-                    // Start button - only for stopped terminals that are not expired
-                    if (t.status === 'stopped') {
-                        actionsHtml += `<button onclick="startTerminal('${terminalId}')" class="btn btn-sm btn-success me-1" title="Start Terminal">
+                    if (status === 'stopped') {
+                        actionsHtml += `<button onclick="startSandbox('${sandboxId}')" class="btn btn-sm btn-success me-1" title="Start Sandbox">
                             <i class="bi bi-play-fill"></i>
                         </button>`;
                     }
-
-                    // Stop button - only for started terminals that are not expired
-                    if (t.status === 'started') {
-                        actionsHtml += `<button data-terminal-id="${terminalId}" class="btn btn-sm btn-warning delete-terminal-btn" title="Stop Terminal">
+                    if (status === 'started') {
+                        actionsHtml += `<button data-sandbox-id="${sandboxId}" class="btn btn-sm btn-warning delete-sandbox-btn" title="Stop Sandbox">
                             <i class="bi bi-stop-fill"></i>
                         </button>`;
                     }
@@ -601,52 +567,41 @@
 
                 return `
                     <tr>
-                        <td>
-                            <code class="text-light">${terminalId.substring(0, 8)}...</code>
-                        </td>
+                        <td><code class="text-light">${sandboxId.substring(0, 8)}...</code></td>
+                        <td><span class="badge bg-outline-primary border border-primary text-primary small">${escapeHtml(s.type)}</span></td>
                         <td>${userIdDisplay}</td>
+                        <td><span class="badge ${statusClass}">${status}</span></td>
+                        <td>${timeSince(s.created_at || new Date())}</td>
+                        <td>${timeUntil(s.expires_at)}</td>
                         <td>
-                            <span class="badge ${statusClass}">${status}</span>
-                        </td>
-                        <td>${timeSince(t.created_at || new Date())}</td>
-                        <td>${timeUntil(t.expires_at)}</td>
-                        <td>
-                            ${t.container_id ?
+                            ${s.container_id ?
                                 `<code class="text-info" title="${containerId}">${containerId.substring(0, 12)}...</code>` :
                                 '<span class="text-muted">N/A</span>'
                             }
                         </td>
                         <td>${resourceHtml}</td>
-                        <td>
-                            ${actionsHtml}
-                        </td>
+                        <td>${actionsHtml}</td>
                     </tr>
                 `;
             }).join('');
 
-            // Add event delegation for delete buttons to avoid inline onclick
-            document.querySelectorAll('.delete-terminal-btn').forEach(btn => {
+            document.querySelectorAll('.delete-sandbox-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    deleteTerminal(btn.dataset.terminalId);
+                    deleteSandbox(btn.dataset.sandboxId);
                 });
             });
         }
 
-        function updateSummaryStats(terminals) {
-            document.getElementById('stat-total').textContent = terminals.length;
-            document.getElementById('stat-active').textContent =
-                terminals.filter(t => t.status === 'started').length;
-            document.getElementById('stat-starting').textContent =
-                terminals.filter(t => ['pending', 'starting'].includes(t.status)).length;
-            document.getElementById('stat-stopped').textContent =
-                terminals.filter(t => t.status === 'stopped').length;
-            document.getElementById('stat-failed').textContent =
-                terminals.filter(t => t.status === 'failed').length;
+        function updateSummaryStats(sandboxes) {
+            document.getElementById('stat-total').textContent = sandboxes.length;
+            document.getElementById('stat-active').textContent = sandboxes.filter(s => s.status === 'started').length;
+            document.getElementById('stat-starting').textContent = sandboxes.filter(s => ['pending', 'starting'].includes(s.status)).length;
+            document.getElementById('stat-stopped').textContent = sandboxes.filter(s => s.status === 'stopped').length;
+            document.getElementById('stat-failed').textContent = sandboxes.filter(s => s.status === 'failed').length;
         }
 
-        // Auto-refresh
         function startAutoRefresh() {
-            autoRefreshInterval = setInterval(loadTerminals, 10000); // Every 10 seconds
+            autoRefreshInterval = setInterval(loadSandboxes, 10000);
         }
 
         function stopAutoRefresh() {
@@ -656,7 +611,6 @@
             }
         }
 
-        // Event listeners
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;
@@ -665,12 +619,11 @@
         });
 
         document.getElementById('logout-btn').addEventListener('click', logout);
-        document.getElementById('refresh-btn').addEventListener('click', loadTerminals);
+        document.getElementById('refresh-btn').addEventListener('click', loadSandboxes);
 
-        // Initialize
         if (authToken) {
             showAdminView();
-            loadTerminals();
+            loadSandboxes();
             startAutoRefresh();
         } else {
             showLoginView();

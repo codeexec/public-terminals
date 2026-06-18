@@ -5,25 +5,47 @@ Pydantic schemas for API request/response validation
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional
 from datetime import datetime
-from src.database.models import TerminalStatus
+from src.database.models import SandboxStatus, SandboxType
 import re
 
 
-class TerminalCreate(BaseModel):
-    """Request schema for creating a terminal"""
+class SandboxCreate(BaseModel):
+    """Request schema for creating a sandbox"""
 
+    type: SandboxType = Field(
+        default=SandboxType.TERMINAL,
+        description="Type of sandbox to create",
+    )
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def validate_type(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
     use_gpu: Optional[bool] = Field(
         default=None,
-        description="Request a GPU-enabled terminal (only available on GKE Autopilot)",
+        description="Request a GPU-enabled sandbox (only available on GKE Autopilot)",
     )
 
 
-class TerminalResponse(BaseModel):
-    """Response schema for terminal details"""
+class SandboxResponse(BaseModel):
+    """Response schema for sandbox details"""
 
     id: str
     user_id: Optional[str] = None
-    status: TerminalStatus
+    type: SandboxType
+    status: SandboxStatus
+
+    @field_validator("type", "status", mode="before")
+    @classmethod
+    def validate_enums(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        if hasattr(v, "value"):
+            return v.value.upper()
+        return v
+
     tunnel_url: Optional[str] = None
     container_id: Optional[str] = None
     container_name: Optional[str] = None
@@ -40,39 +62,36 @@ class TerminalResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TerminalListResponse(BaseModel):
-    """Response schema for listing terminals"""
+class SandboxListResponse(BaseModel):
+    """Response schema for listing sandboxes"""
 
-    terminals: list[TerminalResponse]
+    sandboxes: list[SandboxResponse]
     total: int
 
 
-class TerminalCallbackRequest(BaseModel):
+class SandboxCallbackRequest(BaseModel):
     """Request schema for container callback"""
 
-    terminal_id: str = Field(..., min_length=1, max_length=255)
+    sandbox_id: Optional[str] = Field(None, min_length=1, max_length=255)
+    terminal_id: Optional[str] = Field(None, min_length=1, max_length=255)
+    type: Optional[str] = None  # Using str instead of Enum to avoid validation errors
     tunnel_url: Optional[str] = Field(None, max_length=512)
-    status: Optional[TerminalStatus] = None
+    status: Optional[str] = None  # Using str instead of Enum
     error_message: Optional[str] = Field(None, max_length=1024)
+    message: Optional[str] = Field(None, max_length=1024)
+    idle_seconds: Optional[int] = None
     cpu_percent: Optional[float] = Field(None, ge=0, le=100)
-    memory_mb: Optional[float] = Field(None, ge=0, le=100000)  # Max 100GB
+    memory_mb: Optional[float] = Field(None, ge=0, le=100000)
     memory_percent: Optional[float] = Field(None, ge=0, le=100)
+
+    model_config = ConfigDict(extra="ignore")
 
     @field_validator("tunnel_url")
     @classmethod
     def validate_tunnel_url(cls, v):
         if v is not None and v:
-            # Validate URL format and protocol
             if not re.match(r"^https?://", v):
                 raise ValueError("tunnel_url must use http or https protocol")
-        return v
-
-    @field_validator("terminal_id")
-    @classmethod
-    def validate_terminal_id(cls, v):
-        # Validate terminal_id format (UUID-like or alphanumeric with hyphens)
-        if not re.match(r"^[a-zA-Z0-9-]+$", v):
-            raise ValueError("terminal_id contains invalid characters")
         return v
 
 
@@ -81,7 +100,7 @@ class OperationResponse(BaseModel):
 
     operation_id: str
     status: str
-    terminal_id: Optional[str] = None
+    sandbox_id: Optional[str] = None
     message: Optional[str] = None
 
 

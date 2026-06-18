@@ -12,9 +12,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.config import settings
 from src.database.session import init_db
-from src.api.routes import terminals, callbacks, admin
+from src.api.routes import sandboxes, callbacks, admin
 from src.api.schemas import HealthResponse
 from src.services.warm_pool_service import get_warm_pool_service
+
+
+_API_VERSION = "1.0.0"
+_DEFAULT_PASSWORD = "changeme"
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -57,12 +61,12 @@ def create_lifespan(logger):
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("Starting Terminal Server API")
+        logger.info("Starting Sandbox Server API")
         logger.info(f"Container Platform: {settings.CONTAINER_PLATFORM}")
-        logger.info(f"Terminal TTL: {settings.TERMINAL_TTL_HOURS} hours")
+        logger.info(f"Sandbox TTL: {settings.SANDBOX_TTL_HOURS} hours")
 
         # Enforce strong admin credentials
-        if settings.ADMIN_PASSWORD == "changeme":
+        if settings.ADMIN_PASSWORD == _DEFAULT_PASSWORD:
             logger.error(
                 "SECURITY ERROR: Default ADMIN_PASSWORD 'changeme' detected. "
                 "The server will not start with default credentials. "
@@ -109,7 +113,7 @@ def create_lifespan(logger):
             except Exception as e:
                 logger.warning(f"Error stopping warm pool service: {e}")
 
-        logger.info("Shutting down Terminal Server API")
+        logger.info("Shutting down Sandbox Server API")
 
     return lifespan
 
@@ -119,9 +123,9 @@ def create_app():
     logger = configure_logging()
 
     app = FastAPI(
-        title="Terminal Server API",
-        description="API for managing remote terminal instances",
-        version="1.0.0",
+        title="Sandbox Server API",
+        description="API for managing remote sandbox instances",
+        version=_API_VERSION,
         lifespan=create_lifespan(logger),
     )
 
@@ -141,22 +145,22 @@ def create_app():
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],  # Only needed methods
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=[
             "Content-Type",
             "Authorization",
             "X-Guest-ID",
-        ],  # Only needed headers
-        max_age=600,  # Cache preflight requests for 10 minutes
+        ],
+        max_age=600,
     )
 
-    app.include_router(terminals.router, prefix="/api/v1")
+    app.include_router(sandboxes.router, prefix="/api/v1")
     app.include_router(callbacks.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health_check():
-        return HealthResponse(status="healthy", version="1.0.0")
+        return HealthResponse(status="healthy", version=_API_VERSION)
 
     return app
 

@@ -51,7 +51,7 @@ RUN python -m compileall /app
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Set working directory for the terminal
+# Set working directory for the sandbox
 WORKDIR /workspace
 
 # Expose Terminado port

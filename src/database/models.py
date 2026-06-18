@@ -14,27 +14,37 @@ class Base(DeclarativeBase):
     pass
 
 
-class TerminalStatus(str, enum.Enum):
-    """Terminal status enumeration"""
+class SandboxStatus(str, enum.Enum):
+    """Sandbox status enumeration"""
 
-    PENDING = "pending"
-    STARTING = "starting"
-    STARTED = "started"
-    STOPPED = "stopped"
-    EXPIRED = "expired"
-    FAILED = "failed"
+    PENDING = "PENDING"
+    STARTING = "STARTING"
+    STARTED = "STARTED"
+    STOPPED = "STOPPED"
+    EXPIRED = "EXPIRED"
+    FAILED = "FAILED"
 
 
-class Terminal(Base):
-    """Terminal instance model"""
+class SandboxType(str, enum.Enum):
+    """Sandbox type enumeration"""
 
-    __tablename__ = "terminals"
+    TERMINAL = "TERMINAL"
+    JUPYTERLITE = "JUPYTERLITE"
+
+
+class Sandbox(Base):
+    """Sandbox instance model"""
+
+    __tablename__ = "sandboxes"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    status: Mapped[TerminalStatus] = mapped_column(
-        SQLEnum(TerminalStatus), default=TerminalStatus.PENDING, nullable=False
+    status: Mapped[SandboxStatus] = mapped_column(
+        SQLEnum(SandboxStatus), default=SandboxStatus.PENDING, nullable=False
+    )
+    type: Mapped[SandboxType] = mapped_column(
+        SQLEnum(SandboxType), default=SandboxType.TERMINAL, nullable=False
     )
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     tunnel_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -73,14 +83,14 @@ class Terminal(Base):
     gpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<Terminal(id={self.id}, status={self.status}, tunnel_url={self.tunnel_url})>"
+        return f"<Sandbox(id={self.id}, status={self.status}, tunnel_url={self.tunnel_url})>"
 
     def set_expiry(self, hours: int = 24) -> None:
-        """Set the expiry time for the terminal"""
+        """Set the expiry time for the sandbox"""
         self.expires_at = datetime.now(timezone.utc) + timedelta(hours=hours)
 
     def is_expired(self) -> bool:
-        """Check if terminal has expired"""
+        """Check if sandbox has expired"""
         if self.expires_at is None:
             return False
         # Ensure we are comparing offset-aware datetimes
@@ -91,7 +101,7 @@ class Terminal(Base):
         return now > self.expires_at
 
     def is_idle(self, idle_timeout_minutes: int) -> bool:
-        """Check if terminal has been idle for longer than the timeout"""
+        """Check if sandbox has been idle for longer than the timeout"""
         if self.last_activity_at is None:
             # If never tracked activity, use created_at as fallback
             check_time = self.created_at
@@ -118,6 +128,7 @@ class Terminal(Base):
         """Convert to dictionary"""
         return {
             "id": self.id,
+            "type": self.type.value if hasattr(self.type, "value") else str(self.type),
             "status": self.status.value,
             "tunnel_url": self.tunnel_url,
             "container_id": self.container_id,

@@ -50,7 +50,7 @@ def get_db_context():
     Context manager for database session
     Usage:
         with get_db_context() as db:
-            db.query(Terminal).all()
+            db.query(Sandbox).all()
     """
     db = SessionLocal()
     try:

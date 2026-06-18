@@ -66,10 +66,10 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
     # Container path for resolv.conf files (mounted in API container)
-    RESOLV_CONF_CONTAINER_DIR: str = "/app/terminal-container/tmp-resolv"
+    RESOLV_CONF_CONTAINER_DIR: str = "/app/containers/base/tmp-resolv"
     # Host path for resolv.conf files (for gVisor DNS fix)
     RESOLV_CONF_HOST_DIR: str = (
-        "/home/jupyter/public-terminals/terminal-container/tmp-resolv"
+        "/home/jupyter/public-terminals/containers/base/tmp-resolv"
     )
 
     # Resource Limits
@@ -77,9 +77,10 @@ class Settings(BaseSettings):
     CONTAINER_MEMORY_LIMIT: str = "1g"
     CONTAINER_CPU_LIMIT: float = 1.0
 
-    TERMINAL_IDLE_TIMEOUT_SECONDS: int = 3600  # Default: 1 hour
-    TERMINAL_IMAGE: str = "us-central1-docker.pkg.dev/beatrix-user-project/terminals/terminal-server:latest"
-    TERMINAL_TTL_HOURS: int = 24
+    SANDBOX_IDLE_TIMEOUT_SECONDS: int = 3600  # Default: 1 hour
+    SANDBOX_BASE_IMAGE: str = "us-central1-docker.pkg.dev/beatrix-user-project/terminals/terminal-server:latest"
+    JUPYTERLITE_IMAGE: str = "us-central1-docker.pkg.dev/beatrix-user-project/terminals/jupyterlite-server:latest"
+    SANDBOX_TTL_HOURS: int = 24
 
     # Warm Pool Configuration
     WARM_POOL_ENABLED: bool = True  # Enable pre-warmed container pool
@@ -88,18 +89,18 @@ class Settings(BaseSettings):
         1  # Number of GPU containers to keep warm (smaller due to cost)
     )
 
-    @field_validator("TERMINAL_IDLE_TIMEOUT_SECONDS")
+    @field_validator("SANDBOX_IDLE_TIMEOUT_SECONDS")
     @classmethod
     def validate_idle_timeout(cls, v: int) -> int:
         min_timeout = 600  # 10 minutes
         max_timeout = 86400  # 24 hours
         if v < min_timeout:
             raise ValueError(
-                f"TERMINAL_IDLE_TIMEOUT_SECONDS must be at least {min_timeout} seconds (10 minutes)"
+                f"SANDBOX_IDLE_TIMEOUT_SECONDS must be at least {min_timeout} seconds (10 minutes)"
             )
         if v > max_timeout:
             raise ValueError(
-                f"TERMINAL_IDLE_TIMEOUT_SECONDS must be at most {max_timeout} seconds (24 hours)"
+                f"SANDBOX_IDLE_TIMEOUT_SECONDS must be at most {max_timeout} seconds (24 hours)"
             )
         return v
 

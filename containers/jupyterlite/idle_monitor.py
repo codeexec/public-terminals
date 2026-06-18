@@ -21,13 +21,13 @@ logger = logging.getLogger(__name__)
 class IdleMonitor:
     def __init__(
         self,
-        terminal_id: str,
+        sandbox_id: str,
         api_callback_url: str,
         callback_token: str,
         idle_timeout_seconds: int,
         check_interval_seconds: int = 60,
     ):
-        self.terminal_id = terminal_id
+        self.sandbox_id = sandbox_id
         self.api_callback_url = api_callback_url
         self.callback_token = callback_token
         self.idle_timeout_seconds = idle_timeout_seconds
@@ -55,31 +55,31 @@ class IdleMonitor:
             return False
 
     def has_running_commands(self) -> bool:
-        """Check if there are any commands running in the terminal (bash processes with children)"""
+        """Check if there are any commands running (bash processes for terminal, etc.)"""
+        sandbox_type = os.environ.get("SANDBOX_TYPE", "terminal")
+        
         try:
-            # Look for bash processes that have child processes
-            # This indicates a command is running in the terminal
-            for proc in psutil.process_iter(["name", "pid", "ppid"]):
-                try:
-                    if proc.info["name"] == "bash":
-                        # Check if this bash process has any children
-                        children = proc.children(recursive=False)
-                        if children:
-                            # Filter out our own monitoring processes
-                            non_monitor_children = [
-                                child
-                                for child in children
-                                if child.name()
-                                not in ["python", "python3", "idle_monitor.py"]
-                            ]
-                            if non_monitor_children:
-                                logger.debug(
-                                    f"Found bash process {proc.info['pid']} with running children: "
-                                    f"{[c.name() for c in non_monitor_children]}"
-                                )
-                                return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+            if sandbox_type == "terminal":
+                # Look for bash processes that have child processes
+                for proc in psutil.process_iter(["name", "pid", "ppid"]):
+                    try:
+                        if proc.info["name"] == "bash":
+                            children = proc.children(recursive=False)
+                            if children:
+                                non_monitor_children = [
+                                    child
+                                    for child in children
+                                    if child.name()
+                                    not in ["python", "python3", "idle_monitor.py"]
+                                ]
+                                if non_monitor_children:
+                                    return True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            elif sandbox_type == "jupyterlite":
+                # For JupyterLite, we mostly rely on connections
+                # But we could check for active pyodide/kernel processes if any
+                return False
             return False
         except Exception as e:
             logger.warning(f"Failed to check running commands: {e}")
@@ -100,14 +100,14 @@ class IdleMonitor:
         return is_active
 
     def report_idle_shutdown(self) -> bool:
-        """Report to API that terminal should be shut down due to inactivity"""
+        """Report to API that sandbox should be shut down due to inactivity"""
         try:
             url = f"{self.api_callback_url}/idle"
             idle_minutes = self.idle_timeout_seconds // 60
             payload = {
-                "terminal_id": self.terminal_id,
+                "sandbox_id": self.sandbox_id,
                 "idle_seconds": self.idle_timeout_seconds,
-                "message": f"Terminal idle for {idle_minutes} minutes ({self.idle_timeout_seconds} seconds)",
+                "message": f"Sandbox idle for {idle_minutes} minutes ({self.idle_timeout_seconds} seconds)",
             }
 
             headers = {
@@ -116,7 +116,7 @@ class IdleMonitor:
             }
 
             logger.info(
-                f"Reporting idle shutdown for terminal {self.terminal_id} "
+                f"Reporting idle shutdown for sandbox {self.sandbox_id} "
                 f"(idle for {idle_minutes}+ minutes / {self.idle_timeout_seconds}+ seconds)"
             )
 
@@ -196,13 +196,13 @@ class IdleMonitor:
 
 def main():
     """Main entry point"""
-    terminal_id = os.environ.get("TERMINAL_ID")
+    sandbox_id = os.environ.get("TERMINAL_ID")
     api_callback_url = os.environ.get("API_CALLBACK_URL")
     callback_token = os.environ.get("CALLBACK_TOKEN")
     idle_timeout_seconds = int(os.environ.get("TERMINAL_IDLE_TIMEOUT_SECONDS", "3600"))
     check_interval_seconds = int(os.environ.get("IDLE_CHECK_INTERVAL_SECONDS", "60"))
 
-    if not terminal_id or not api_callback_url or not callback_token:
+    if not sandbox_id or not api_callback_url or not callback_token:
         logger.error(
             "Missing required environment variables: "
             "TERMINAL_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
@@ -210,7 +210,7 @@ def main():
         sys.exit(1)
 
     monitor = IdleMonitor(
-        terminal_id=terminal_id,
+        sandbox_id=sandbox_id,
         api_callback_url=api_callback_url,
         callback_token=callback_token,
         idle_timeout_seconds=idle_timeout_seconds,

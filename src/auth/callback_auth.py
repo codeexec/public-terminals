@@ -10,45 +10,45 @@ from typing import Optional
 from src.config import settings
 
 
-def generate_callback_token(terminal_id: str) -> str:
+def generate_callback_token(sandbox_id: str) -> str:
     """
-    Generate a unique callback authentication token for a terminal.
+    Generate a unique callback authentication token for a sandbox.
 
     Uses HMAC-SHA256 with the JWT secret key to create a token that:
-    - Is unique per terminal
+    - Is unique per sandbox
     - Cannot be forged without knowing the secret
-    - Does not expire (terminal lifetime handles that)
+    - Does not expire (sandbox lifetime handles that)
 
     Args:
-        terminal_id: The terminal ID to generate a token for
+        sandbox_id: The sandbox ID to generate a token for
 
     Returns:
         Hexadecimal HMAC token
     """
-    message = f"callback:{terminal_id}".encode("utf-8")
+    message = f"callback:{sandbox_id}".encode("utf-8")
     secret = settings.JWT_SECRET_KEY.encode("utf-8")
 
     token = hmac.new(secret, message, hashlib.sha256).hexdigest()
     return token
 
 
-def verify_callback_token(terminal_id: str, token: str) -> bool:
+def verify_callback_token(sandbox_id: str, token: str) -> bool:
     """
-    Verify that a callback token is valid for the given terminal.
+    Verify that a callback token is valid for the given sandbox.
 
     Uses constant-time comparison to prevent timing attacks.
 
     Args:
-        terminal_id: The terminal ID from the callback
+        sandbox_id: The sandbox ID from the callback
         token: The token provided in the callback
 
     Returns:
         True if token is valid, False otherwise
     """
-    if not terminal_id or not token:
+    if not sandbox_id or not token:
         return False
 
-    expected_token = generate_callback_token(terminal_id)
+    expected_token = generate_callback_token(sandbox_id)
 
     # Use constant-time comparison to prevent timing attacks
     return hmac.compare_digest(token, expected_token)

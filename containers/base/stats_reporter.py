@@ -83,12 +83,12 @@ def collect_stats():
         return None
 
 
-def send_stats(terminal_id, stats, api_callback_url, callback_token):
+def send_stats(sandbox_id, stats, api_callback_url, callback_token):
     """Send statistics to API callback endpoint"""
     try:
         url = f"{api_callback_url}/stats"
         payload = {
-            "terminal_id": terminal_id,
+            "sandbox_id": sandbox_id,
             "cpu_percent": stats["cpu_percent"],
             "memory_mb": stats["memory_mb"],
             "memory_percent": stats["memory_percent"],
@@ -119,18 +119,18 @@ def send_stats(terminal_id, stats, api_callback_url, callback_token):
 
 def main():
     """Main loop - collect and send stats every 30 seconds"""
-    terminal_id = os.environ.get("TERMINAL_ID")
+    sandbox_id = os.environ.get("TERMINAL_ID")
     api_callback_url = os.environ.get("API_CALLBACK_URL")
     callback_token = os.environ.get("CALLBACK_TOKEN")
 
-    if not terminal_id or not api_callback_url or not callback_token:
+    if not sandbox_id or not api_callback_url or not callback_token:
         logger.error(
             "Missing required environment variables: "
             "TERMINAL_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
         )
         sys.exit(1)
 
-    logger.info(f"Stats reporter started for terminal {terminal_id}")
+    logger.info(f"Stats reporter started for sandbox {sandbox_id}")
     logger.info(f"Reporting to: {api_callback_url}/stats")
 
     # Wait a bit before starting to let container fully initialize
@@ -141,7 +141,7 @@ def main():
             stats = collect_stats()
 
             if stats:
-                send_stats(terminal_id, stats, api_callback_url, callback_token)
+                send_stats(sandbox_id, stats, api_callback_url, callback_token)
 
             # Wait 30 seconds before next report
             time.sleep(30)

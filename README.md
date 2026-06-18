@@ -1,6 +1,6 @@
-# Terminal Server
+# Sandbox Server
 
-A cloud-based terminal provisioning system that provides on-demand terminal access via web browsers using Terminado and localtunnel.
+A cloud-based sandbox provisioning system that provides on-demand environment access via web browsers.
 
 ## Demo
 
@@ -42,8 +42,8 @@ Alternatively, you can use the Makefile:
 # Initialize and start all services
 make init && make up
 
-# Build the terminal image (required for terminal creation)
-make build-terminal
+# Build the base sandbox image
+make build-base
 ```
 
 Once started, access the application at:
@@ -54,7 +54,7 @@ Once started, access the application at:
 ### 3. Verification
 Run the full integration test to verify the entire flow:
 ```bash
-./scripts/run_test.sh
+./scripts/run_integration_tests.sh
 ```
 
 ---
@@ -71,62 +71,45 @@ The system behaves differently based on whether it's running locally for develop
 | **DB Access** | `localhost:5432` | Internal Only | `DATABASE_URL` |
 
 ## Features
-- **Instant Provisioning:** Isolated bash terminals created on-demand.
-- **Web Access:** Access terminals via a browser through secure tunnel URLs.
-- **Admin Dashboard:** JWT-authenticated admin UI to view and manage all terminals across all users.
+- **Instant Provisioning:** Isolated sandboxes created on-demand.
+- **Web Access:** Access sandboxes via a browser through secure tunnel URLs.
+- **Admin Dashboard:** JWT-authenticated admin UI to view and manage all sandboxes across all users.
 - **Automatic Cleanup:** 24-hour TTL with Celery-based background cleanup.
-- **Full Toolset:** Terminals include `tmux`, `git`, `vim`, `python`, `node`, `claude-cli`, and `gemini-cli`.
+- **Resource Monitoring:** Real-time CPU and Memory usage tracking.
 
 ## Architecture
-- **Web Server (8001):** React-like vanilla JS frontend.
+- **Web Server (8001):** Vanilla JS frontend.
 - **API Server (8000):** FastAPI backend managing container lifecycles.
-- **Database:** PostgreSQL for terminal metadata.
+- **Database:** PostgreSQL for sandbox metadata.
 - **Worker:** Celery + Redis for background tasks and cleanup.
-- **Terminals:** Ephemeral Docker containers running Terminado + localtunnel.
+- **Sandboxes:** Ephemeral Docker containers running tools + localtunnel.
 
-## Recent Changes & Troubleshooting
-
-### Fixed: Terminals stuck in "starting"
-The terminal startup script (`entrypoint.sh`) was previously blocking on the `localtunnel` process. 
-
-**Improvements made:**
-- **Backgrounded Localtunnel:** The tunnel process now runs in the background, allowing the script to report the tunnel URL back to the API.
-- **Enhanced Logging:** All container startup logs are now redirected to `stderr` to avoid shell pipe blocking.
-- **Retry Logic:** Improved polling for the tunnel URL within the container.
-
-### Manual Cleanup
-If you need to force-kill all active terminal containers:
+## Manual Cleanup
+If you need to force-kill all active sandbox containers:
 ```bash
-sudo docker ps -a --filter "name=terminal-" -q | xargs -r sudo docker rm -f
+sudo docker ps -a --filter "name=sandbox-" -q | xargs -r sudo docker rm -f
 ```
 
 ## API Usage
-**Create Terminal:**
+**Create Sandbox:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/terminals -d '{}'
+curl -X POST http://localhost:8000/api/v1/sandboxes -d '{}'
 ```
 
-**List Terminals:**
+**List Sandboxes:**
 ```bash
-curl http://localhost:8000/api/v1/terminals
+curl http://localhost:8000/api/v1/sandboxes
 ```
 
 ## Admin Dashboard
 
-The admin UI provides a centralized interface to manage all terminals across all users.
+The admin UI provides a centralized interface to manage all sandboxes across all users.
 
 ### Access
 - **URL:** http://localhost:8001/admin
 - **Default Credentials:**
   - Username: `admin`
   - Password: Set in `.env` file (`ADMIN_PASSWORD`)
-
-### Features
-- View all active terminals regardless of user/guest ID
-- Real-time stats: Total, Active, Starting, Failed terminals
-- Terminate any terminal with one click
-- Auto-refresh every 10 seconds
-- JWT-based authentication with 60-minute session timeout
 
 ### Admin API Endpoints
 **Login:**
@@ -136,34 +119,17 @@ curl -X POST http://localhost:8000/api/v1/admin/login \
   -d '{"username":"admin","password":"your_password"}'
 ```
 
-**List All Terminals (requires JWT token):**
+**List All Sandboxes (requires JWT token):**
 ```bash
-curl http://localhost:8000/api/v1/admin/terminals \
+curl http://localhost:8000/api/v1/admin/sandboxes \
   -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
 ```
 
-**Terminate Terminal (requires JWT token):**
+**Terminate Sandbox (requires JWT token):**
 ```bash
-curl -X DELETE http://localhost:8000/api/v1/admin/terminals/<TERMINAL_ID> \
+curl -X DELETE http://localhost:8000/api/v1/admin/sandboxes/<SANDBOX_ID> \
   -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
 ```
-
-### Configuration
-Admin settings are configured via environment variables in `.env`:
-
-```bash
-# Admin Authentication
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=your_secure_password_here
-JWT_SECRET_KEY=generate_with_openssl_rand_hex_32
-JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
-```
-
-**Security Notes:**
-- Change the default admin password in production
-- Generate a secure JWT secret key: `openssl rand -hex 32`
-- The setup script will automatically generate these if missing
 
 ## Development
 
@@ -172,22 +138,13 @@ JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
 # Start services
 ./scripts/start_services.sh
 
-# Restart after code changes (hot reload for mounted volumes)
+# Restart after code changes
 ./scripts/start_services.sh --restart
 
-# Rebuild after dependency changes (requirements.txt, Dockerfile)
+# Rebuild after dependency changes
 ./scripts/start_services.sh --rebuild
-
-# View logs
-make logs              # All services
-make logs-api          # API server only
-docker compose logs -f # Follow logs
-
-# Stop services
-make down
-docker compose down
 
 # Run tests
 make test-api                # Unit tests
-./scripts/run_test.sh        # Full integration test
+./scripts/run_integration_tests.sh        # Full integration test
 ```

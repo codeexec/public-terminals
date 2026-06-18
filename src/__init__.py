@@ -1,1 +1,1 @@
-"""Terminal Server Package"""
+"""Sandbox Server Package"""

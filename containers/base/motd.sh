@@ -1,3 +1,3 @@
 #!/bin/bash
-echo "Welcome to the Terminal Container!"
+echo "Welcome to the Sandbox Workspace!"
 echo "----------------------------------------"

@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from src.database.session import get_db
-from src.database.models import Terminal, TerminalStatus
-from src.api.schemas import TerminalCallbackRequest
+from src.database.models import Sandbox, SandboxStatus
+from src.api.schemas import SandboxCallbackRequest
 from src.auth.callback_auth import verify_callback_token, extract_bearer_token
 from src.services.warm_pool_service import get_warm_pool_service
 
@@ -20,31 +20,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/callbacks", tags=["callbacks"])
 
 
+def get_actual_sandbox_id(callback: SandboxCallbackRequest) -> str:
+    """Extract sandbox_id from callback, falling back to terminal_id for old containers"""
+    s_id = callback.sandbox_id or callback.terminal_id
+    if not s_id:
+        # This shouldn't happen with the current schema and validators, but for safety:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Missing sandbox_id or terminal_id"
+        )
+    return s_id
+
+
 def verify_callback_authentication(
-    callback: TerminalCallbackRequest, authorization: Optional[str] = Header(None)
+    callback: SandboxCallbackRequest, authorization: Optional[str] = Header(None)
 ):
     """
     Verify callback authentication token.
-
-    Args:
-        callback: The callback request containing terminal_id
-        authorization: The Authorization header
-
-    Raises:
-        HTTPException: If authentication fails
+    Supports both sandbox_id and terminal_id (for legacy containers).
     """
+    s_id = get_actual_sandbox_id(callback)
     token = extract_bearer_token(authorization)
 
     if not token:
-        logger.warning(f"Callback for {callback.terminal_id} missing auth token")
+        logger.warning(f"Callback for {s_id} missing auth token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not verify_callback_token(callback.terminal_id, token):
-        logger.warning(f"Callback for {callback.terminal_id} has invalid token")
+    if not verify_callback_token(s_id, token):
+        logger.warning(f"Callback for {s_id} has invalid token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid callback token",
@@ -54,270 +61,267 @@ def verify_callback_authentication(
 
 @router.post("/tunnel", status_code=status.HTTP_200_OK)
 async def report_tunnel_url(
-    callback: TerminalCallbackRequest,
+    callback: SandboxCallbackRequest,
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report their tunnel URL
-    Called by the container's entrypoint script when tunnel is established
-
-    Requires: Valid callback authentication token
     """
     # Verify authentication
     verify_callback_authentication(callback, authorization)
+    
+    s_id = get_actual_sandbox_id(callback)
 
-    logger.info(f"Received tunnel callback for terminal {callback.terminal_id}")
+    logger.info(f"Received tunnel callback for sandbox {s_id}")
 
     # Check if this is a warm pool container
     warm_pool = get_warm_pool_service()
-    if warm_pool.is_warm_id(callback.terminal_id):
+    if warm_pool.is_warm_id(s_id):
         # Update the warm pool instead of database
         if callback.tunnel_url:
-            await warm_pool.update_tunnel_url(callback.terminal_id, callback.tunnel_url)
+            await warm_pool.update_tunnel_url(s_id, callback.tunnel_url)
             logger.info(
-                f"Updated warm container {callback.terminal_id} with tunnel URL"
+                f"Updated warm container {s_id} with tunnel URL"
             )
         return {
             "status": "success",
-            "terminal_id": callback.terminal_id,
+            "sandbox_id": s_id,
             "message": "Warm container tunnel URL registered",
         }
 
-    # Find the terminal
-    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+    # Find the sandbox
+    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
 
-    if not terminal:
-        logger.error(f"Terminal {callback.terminal_id} not found")
+    if not sandbox:
+        logger.error(f"Sandbox {s_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found",
+            detail=f"Sandbox {s_id} not found",
         )
 
     # Update tunnel URL and status
-    terminal.tunnel_url = callback.tunnel_url
-    terminal.status = TerminalStatus.STARTED
+    sandbox.tunnel_url = callback.tunnel_url
+    sandbox.status = SandboxStatus.STARTED
 
     db.commit()
-    db.refresh(terminal)
+    db.refresh(sandbox)
 
     logger.info(
-        f"Updated terminal {callback.terminal_id} with tunnel URL: {callback.tunnel_url}"
+        f"Updated sandbox {s_id} with tunnel URL: {callback.tunnel_url}"
     )
 
     return {
         "status": "success",
-        "terminal_id": terminal.id,
+        "sandbox_id": sandbox.id,
         "message": "Tunnel URL registered successfully",
     }
 
 
 @router.post("/status", status_code=status.HTTP_200_OK)
 async def report_status(
-    callback: TerminalCallbackRequest,
+    callback: SandboxCallbackRequest,
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report their status
-    Can be used to report errors or status changes
-
-    Requires: Valid callback authentication token
     """
     # Verify authentication
     verify_callback_authentication(callback, authorization)
+    
+    s_id = get_actual_sandbox_id(callback)
 
     logger.info(
-        f"Received status callback for terminal {callback.terminal_id}: {callback.status}"
+        f"Received status callback for sandbox {s_id}: {callback.status}"
     )
 
-    # Find the terminal
-    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+    # Find the sandbox
+    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
 
-    if not terminal:
-        logger.error(f"Terminal {callback.terminal_id} not found")
+    if not sandbox:
+        logger.error(f"Sandbox {s_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found",
+            detail=f"Sandbox {s_id} not found",
         )
 
-    # Update status
+    # Update status (handle string or enum)
     if callback.status:
-        terminal.status = callback.status
+        try:
+            # Convert string to uppercase Enum
+            new_status = callback.status.upper()
+            sandbox.status = SandboxStatus(new_status)
+        except (ValueError, AttributeError):
+            logger.warning(f"Invalid status received: {callback.status}")
 
     if callback.error_message:
-        terminal.error_message = callback.error_message
-        terminal.status = TerminalStatus.FAILED
+        sandbox.error_message = callback.error_message
+        sandbox.status = SandboxStatus.FAILED
 
     db.commit()
-    db.refresh(terminal)
+    db.refresh(sandbox)
 
-    logger.info(f"Updated terminal {callback.terminal_id} status to: {terminal.status}")
+    logger.info(f"Updated sandbox {s_id} status to: {sandbox.status}")
 
     return {
         "status": "success",
-        "terminal_id": terminal.id,
+        "sandbox_id": sandbox.id,
         "message": "Status updated successfully",
     }
 
 
 @router.post("/health", status_code=status.HTTP_200_OK)
 async def container_health_check(
-    callback: TerminalCallbackRequest,
+    callback: SandboxCallbackRequest,
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
     Health check endpoint for containers to ping
-    Containers can periodically call this to signal they're still alive
-
-    Requires: Valid callback authentication token
     """
     # Verify authentication
     verify_callback_authentication(callback, authorization)
+    
+    s_id = get_actual_sandbox_id(callback)
 
-    # Find the terminal
-    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+    # Find the sandbox
+    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
 
-    if not terminal:
+    if not sandbox:
+        logger.error(f"Sandbox {s_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found",
+            detail=f"Sandbox {s_id} not found",
         )
 
     # Track activity for idle timeout detection
-    terminal.set_last_activity()
+    sandbox.set_last_activity()
     db.commit()
 
     # Just acknowledging the health check
-    return {"status": "healthy", "terminal_id": terminal.id}
+    return {"status": "healthy", "sandbox_id": sandbox.id}
 
 
 @router.post("/stats", status_code=status.HTTP_200_OK)
 async def report_stats(
-    callback: TerminalCallbackRequest,
+    callback: SandboxCallbackRequest,
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     # Verify authentication
     verify_callback_authentication(callback, authorization)
+    
+    s_id = get_actual_sandbox_id(callback)
 
-    # First try to find the terminal directly
-    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+    # First try to find the sandbox directly
+    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
 
     # If not found, and it looks like a warm ID, check if it was claimed
-    # (Claimed warm containers report with warm-ID but exist in DB with a real ID)
-    if not terminal and callback.terminal_id.startswith("warm-"):
-        # The container_name is deterministically derived from the warm ID (terminal_id in the container)
-        # warm-123 -> terminal-warm-123
-        expected_container_name = f"terminal-{callback.terminal_id}"
+    if not sandbox and s_id.startswith("warm-"):
+        # The container_name is deterministically derived from the warm ID
+        # warm-123 -> sandbox-warm-123
+        expected_container_name = f"sandbox-{s_id}"
 
-        terminal = (
-            db.query(Terminal)
-            .filter(Terminal.container_name == expected_container_name)
+        sandbox = (
+            db.query(Sandbox)
+            .filter(Sandbox.container_name == expected_container_name)
             .first()
         )
 
-        if terminal:
+        if sandbox:
             logger.info(
-                f"Found real terminal {terminal.id} for warm container {callback.terminal_id} (via container_name lookup)"
+                f"Found real sandbox {sandbox.id} for warm container {s_id} (via container_name lookup)"
             )
 
     # If still not found, check if it's an unclaimed warm container
-    if not terminal:
+    if not sandbox:
         warm_pool = get_warm_pool_service()
-        if warm_pool.is_warm_id(callback.terminal_id):
-            # Warm containers don't exist in DB yet, but they report stats
-            # We can just ignore these stats or update the warm pool if we tracked stats there
+        if warm_pool.is_warm_id(s_id):
             return {
                 "status": "success",
-                "terminal_id": callback.terminal_id,
+                "sandbox_id": s_id,
                 "message": "Warm container stats received (ignored)",
             }
 
         # Real 404 if not found and not a warm container
-        logger.error(f"Terminal {callback.terminal_id} not found")
+        logger.error(f"Sandbox {s_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found",
+            detail=f"Sandbox {s_id} not found",
         )
 
     # Update stats cache
-    if terminal.container_id and (
+    if sandbox.container_id and (
         callback.cpu_percent is not None or callback.memory_mb is not None
     ):
         from src.services.stats_service import stats_service
 
         stats_service.update_container_stats(
-            container_id=terminal.container_id,
+            container_id=sandbox.container_id,
             cpu_percent=callback.cpu_percent or 0.0,
             memory_mb=callback.memory_mb or 0.0,
             memory_percent=callback.memory_percent or 0.0,
         )
 
         logger.debug(
-            f"Updated stats for terminal {callback.terminal_id}: "
+            f"Updated stats for sandbox {sandbox.id}: "
             f"CPU={callback.cpu_percent}%, MEM={callback.memory_mb}MB"
         )
 
-    # DO NOT track activity here - stats reporting doesn't mean user activity
-    # Activity tracking is now handled by the idle monitor in the container
-
     return {
         "status": "success",
-        "terminal_id": terminal.id,
+        "sandbox_id": sandbox.id,
         "message": "Stats updated successfully",
     }
 
 
 @router.post("/idle", status_code=status.HTTP_200_OK)
 async def report_idle_shutdown(
-    callback: TerminalCallbackRequest,
+    callback: SandboxCallbackRequest,
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
     Callback endpoint for containers to report that they are idle and should be shut down
-    Called by the idle monitor when no user is connected and no commands are running
-    for the configured idle timeout period
-
-    Requires: Valid callback authentication token
     """
     # Verify authentication
     verify_callback_authentication(callback, authorization)
+    
+    s_id = get_actual_sandbox_id(callback)
 
     logger.info(
-        f"Received idle shutdown request for terminal {callback.terminal_id}: {callback.error_message}"
+        f"Received idle shutdown request for sandbox {s_id}: {callback.message or callback.error_message}"
     )
 
-    # Find the terminal
-    terminal = db.query(Terminal).filter(Terminal.id == callback.terminal_id).first()
+    # Find the sandbox
+    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
 
-    if not terminal:
-        logger.error(f"Terminal {callback.terminal_id} not found")
+    if not sandbox:
+        logger.error(f"Sandbox {s_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Terminal {callback.terminal_id} not found",
+            detail=f"Sandbox {s_id} not found",
         )
 
-    # Check if terminal is already stopped or being deleted
-    if terminal.status in [
-        TerminalStatus.STOPPED,
-        TerminalStatus.EXPIRED,
-        TerminalStatus.FAILED,
+    # Check if sandbox is already stopped or being deleted
+    if sandbox.status in [
+        SandboxStatus.STOPPED,
+        SandboxStatus.EXPIRED,
+        SandboxStatus.FAILED,
     ]:
         logger.info(
-            f"Terminal {callback.terminal_id} already in terminal state: {terminal.status}"
+            f"Sandbox {s_id} already in terminal state: {sandbox.status}"
         )
         return {
             "status": "success",
-            "terminal_id": terminal.id,
-            "message": f"Terminal already {terminal.status}",
+            "sandbox_id": sandbox.id,
+            "message": f"Sandbox already {sandbox.status}",
         }
 
     # Stop the container due to inactivity
     logger.info(
-        f"Stopping terminal {callback.terminal_id} due to inactivity: {callback.error_message}"
+        f"Stopping sandbox {sandbox.id} due to inactivity: {callback.message or callback.error_message}"
     )
 
     # Import here to avoid circular dependency
@@ -327,26 +331,26 @@ async def report_idle_shutdown(
 
     try:
         # Stop the container
-        if terminal.container_id:
-            await container_service.stop_terminal_container(terminal.container_id)
+        if sandbox.container_id:
+            await container_service.stop_sandbox_container(sandbox.container_id)
 
-        # Update terminal status to STOPPED (not deleted, so it can be restarted if needed)
-        terminal.status = TerminalStatus.STOPPED
+        # Update sandbox status to STOPPED
+        sandbox.status = SandboxStatus.STOPPED
         db.commit()
 
         logger.info(
-            f"Successfully stopped idle terminal {callback.terminal_id} (container: {terminal.container_id})"
+            f"Successfully stopped idle sandbox {sandbox.id} (container: {sandbox.container_id})"
         )
 
         return {
             "status": "success",
-            "terminal_id": terminal.id,
-            "message": "Terminal stopped due to inactivity",
+            "sandbox_id": sandbox.id,
+            "message": "Sandbox stopped due to inactivity",
         }
 
     except Exception as e:
-        logger.error(f"Failed to stop idle terminal {callback.terminal_id}: {e}")
+        logger.error(f"Failed to stop idle sandbox {sandbox.id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to stop terminal: {str(e)}",
+            detail=f"Failed to stop sandbox: {str(e)}",
         )

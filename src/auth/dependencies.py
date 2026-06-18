@@ -41,21 +41,21 @@ async def get_current_admin(
 
 
 async def verify_callback_auth(
-    terminal_id: str,
+    sandbox_id: str,
     authorization: Optional[str] = Header(None),
 ) -> str:
     """
     Dependency to validate callback authentication token.
 
     Callbacks from containers must include a valid HMAC token in the
-    Authorization header that matches the terminal_id they're reporting for.
+    Authorization header that matches the sandbox_id they're reporting for.
 
     Args:
-        terminal_id: The terminal ID from the callback request body
+        sandbox_id: The sandbox ID from the callback request body
         authorization: Authorization header (Bearer <token>)
 
     Returns:
-        The terminal_id if authentication succeeds
+        The sandbox_id if authentication succeeds
 
     Raises:
         HTTPException: If token is missing or invalid
@@ -70,12 +70,12 @@ async def verify_callback_auth(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Verify the token matches the terminal_id
-    if not verify_callback_token(terminal_id, token):
+    # Verify the token matches the sandbox_id
+    if not verify_callback_token(sandbox_id, token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid callback token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return terminal_id
+    return sandbox_id

@@ -6,15 +6,19 @@ class ContainerServiceInterface(ABC):
     """Abstract interface for container management"""
 
     @abstractmethod
-    async def create_terminal_container(
-        self, terminal_id: str, use_gpu: bool = False
+    async def create_sandbox_container(
+        self,
+        sandbox_id: str,
+        use_gpu: bool = False,
+        sandbox_type: str = "terminal",
     ) -> Dict[str, str]:
         """
-        Create a new terminal container.
+        Create a new sandbox container.
 
         Args:
-            terminal_id: Unique identifier for the terminal
+            sandbox_id: Unique identifier for the sandbox
             use_gpu: Request GPU-enabled container (GKE Autopilot only)
+            sandbox_type: Type of sandbox (terminal or jupyterlite)
 
         Returns:
             Dict with container_id and container_name
@@ -22,13 +26,13 @@ class ContainerServiceInterface(ABC):
         pass
 
     @abstractmethod
-    async def delete_terminal_container(self, container_id: str) -> bool:
-        """Delete a terminal container"""
+    async def delete_sandbox_container(self, container_id: str) -> bool:
+        """Delete a sandbox container"""
         pass
 
     @abstractmethod
-    async def stop_terminal_container(self, container_id: str) -> bool:
-        """Stop a terminal container (used for idle timeout)"""
+    async def stop_sandbox_container(self, container_id: str) -> bool:
+        """Stop a sandbox container (used for idle timeout)"""
         pass
 
     @abstractmethod

@@ -1,6 +1,5 @@
 import tornado.ioloop
 import tornado.web
-from terminado import TermSocket, SingleTermManager
 import logging
 import json
 import os
@@ -9,14 +8,12 @@ from datetime import datetime, timezone
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Terminal manager
-term_manager = SingleTermManager(shell_command=["bash"])
-
 # Global state for tunnel URL
-tunnel_info = {
+status_info = {
     "tunnel_url": None,
     "status": "starting",
-    "terminal_id": os.environ.get("TERMINAL_ID", "unknown"),
+    "sandbox_id": os.environ.get("TERMINAL_ID", "unknown"),
+    "sandbox_type": "jupyterlite",
     "started_at": datetime.now(timezone.utc).isoformat(),
 }
 
@@ -30,10 +27,11 @@ class HealthHandler(tornado.web.RequestHandler):
             json.dumps(
                 {
                     "status": "healthy",
-                    "terminal_id": tunnel_info["terminal_id"],
+                    "sandbox_id": status_info["sandbox_id"],
+                    "sandbox_type": status_info["sandbox_type"],
                     "uptime": (
                         datetime.now(timezone.utc)
-                        - datetime.fromisoformat(str(tunnel_info["started_at"]))
+                        - datetime.fromisoformat(str(status_info["started_at"]))
                     ).seconds,
                 }
             )
@@ -45,15 +43,15 @@ class StatusHandler(tornado.web.RequestHandler):
 
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps(tunnel_info))
+        self.write(json.dumps(status_info))
 
     def post(self):
         """Allow updating tunnel info"""
         try:
             data = json.loads(self.request.body)
             if "tunnel_url" in data:
-                tunnel_info["tunnel_url"] = data["tunnel_url"]
-                tunnel_info["status"] = "ready"
+                status_info["tunnel_url"] = data["tunnel_url"]
+                status_info["status"] = "ready"
                 logger.info(f"Tunnel URL updated: {data['tunnel_url']}")
             self.set_header("Content-Type", "application/json")
             self.write(json.dumps({"success": True}))
@@ -64,20 +62,23 @@ class StatusHandler(tornado.web.RequestHandler):
 
 
 # Tornado application
-application = tornado.web.Application(
-    [
-        (r"/websocket", TermSocket, {"term_manager": term_manager}),
-        (r"/health", HealthHandler),
-        (r"/status", StatusHandler),
-        (
-            r"/()",
-            tornado.web.StaticFileHandler,
-            {"path": "/app", "default_filename": "index.html"},
-        ),
-    ]
-)
+def make_app():
+    return tornado.web.Application(
+        [
+            (r"/health", HealthHandler),
+            (r"/status", StatusHandler),
+            (
+                r"/(.*)",
+                tornado.web.StaticFileHandler,
+                {"path": "/app/dist", "default_filename": "index.html"},
+            ),
+        ]
+    )
+
 
 if __name__ == "__main__":
-    logger.info("Starting Terminado server on port 8888")
-    application.listen(8888)
+    port = 8888
+    logger.info(f"Starting JupyterLite static server on port {port}")
+    app = make_app()
+    app.listen(port)
     tornado.ioloop.IOLoop.current().start()

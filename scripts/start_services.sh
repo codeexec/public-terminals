@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to start all Terminal Server services safely
+# Script to start all Sandbox Server services safely
 
 set -e
 
@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
-            echo "Start and manage Terminal Server services"
+            echo "Start and manage Sandbox Server services"
             echo ""
             echo "Options:"
             echo "  (no options)   Start services (checks prerequisites on first run)"
@@ -57,15 +57,15 @@ done
 
 if [ "$MODE" == "restart" ]; then
     echo -e "${BLUE}=========================================${NC}"
-    echo -e "${BLUE}   Restarting Terminal Server Services   ${NC}"
+    echo -e "${BLUE}   Restarting Sandbox Server Services    ${NC}"
     echo -e "${BLUE}=========================================${NC}"
 elif [ "$MODE" == "rebuild" ]; then
     echo -e "${BLUE}=========================================${NC}"
-    echo -e "${BLUE}   Rebuilding Terminal Server Services   ${NC}"
+    echo -e "${BLUE}   Rebuilding Sandbox Server Services    ${NC}"
     echo -e "${BLUE}=========================================${NC}"
 else
     echo -e "${BLUE}=========================================${NC}"
-    echo -e "${BLUE}   Starting Terminal Server Services     ${NC}"
+    echo -e "${BLUE}   Starting Sandbox Server Services      ${NC}"
     echo -e "${BLUE}=========================================${NC}"
 fi
 
@@ -119,25 +119,25 @@ if ! grep -q "^JWT_SECRET_KEY=.\+" .env 2>/dev/null; then
     echo -e "${GREEN}✓ JWT secret key generated${NC}"
 fi
 
-# 3. Build Terminal Container if needed
+# 3. Build Base Sandbox Container if needed
 PLATFORM=$(grep "^CONTAINER_PLATFORM=" .env 2>/dev/null | cut -d= -f2 || echo "docker")
 GKE_IMAGE="us-central1-docker.pkg.dev/beatrix-user-project/terminals/terminal-server:latest"
 
 if [ "$MODE" == "rebuild" ]; then
-    echo -e "${YELLOW}Rebuilding terminal-server image...${NC}"
-    cd terminal-container && sudo docker build -t terminal-server:latest . && cd ..
+    echo -e "${YELLOW}Rebuilding base sandbox image...${NC}"
+    cd containers/base && sudo docker build -t terminal-server:latest . && cd ../..
     if [ "$PLATFORM" == "kubernetes" ]; then
         echo -e "${YELLOW}Tagging image for GKE...${NC}"
         sudo docker tag terminal-server:latest "$GKE_IMAGE"
     fi
-    echo -e "${GREEN}✓ terminal-server image rebuilt${NC}"
+    echo -e "${GREEN}✓ base sandbox image rebuilt${NC}"
 elif [ "$MODE" == "start" ]; then
-    echo -e "${YELLOW}Ensuring terminal-server image exists...${NC}"
+    echo -e "${YELLOW}Ensuring base sandbox image exists...${NC}"
     if [[ "$(sudo docker images -q terminal-server:latest 2> /dev/null)" == "" ]]; then
-        echo -e "${YELLOW}Building terminal-server image (this may take a minute)...${NC}"
-        cd terminal-container && sudo docker build -t terminal-server:latest . && cd ..
+        echo -e "${YELLOW}Building base sandbox image (this may take a minute)...${NC}"
+        cd containers/base && sudo docker build -t terminal-server:latest . && cd ../..
     else
-        echo -e "${GREEN}✓ terminal-server image found${NC}"
+        echo -e "${GREEN}✓ base sandbox image found${NC}"
     fi
     
     if [ "$PLATFORM" == "kubernetes" ]; then
@@ -168,7 +168,7 @@ else
     echo ""
 fi
 
-# 5. Wait and Verify Health (with potential restart for transient DNS issues)
+# 5. Wait and Verify Health
 echo -e "${YELLOW}Waiting for services to be healthy...${NC}"
 echo ""
 
@@ -184,7 +184,6 @@ check_container_health() {
             echo -e "${GREEN}ready ✓${NC}"
             return 0
         elif [ "$health" == "none" ]; then
-            # Container doesn't have healthcheck, check if it's running
             local status=$(sudo docker inspect --format='{{.State.Status}}' "${name}" 2>/dev/null || echo "stopped")
             if [ "$status" == "running" ]; then
                 echo -e "${GREEN}running ✓${NC}"
@@ -211,8 +210,6 @@ check_http_endpoint() {
             return 0
         fi
 
-        # After 10 attempts, if it's still failing, try restarting it
-        # (fixes transient DNS resolution issues in some Docker environments)
         if [ $i -eq 10 ]; then
             echo -e "${YELLOW}restarting...${NC}"
             echo -n "  ${label}: "
@@ -226,13 +223,13 @@ check_http_endpoint() {
     return 1
 }
 
-# Wait for base services first
-check_container_health "terminal-server-db" "PostgreSQL" || exit 1
-check_container_health "terminal-server-redis" "Redis" || exit 1
+# Wait for base services
+check_container_health "sandbox-server-db" "PostgreSQL" || exit 1
+check_container_health "sandbox-server-redis" "Redis" || exit 1
 
-# Then wait for application services
-check_http_endpoint "terminal-server-api" "8000" "API Server" || exit 1
-check_http_endpoint "terminal-server-web" "8001" "Web Server" || exit 1
+# Wait for application services
+check_http_endpoint "sandbox-server-api" "8000" "API Server" || exit 1
+check_http_endpoint "sandbox-server-web" "8001" "Web Server" || exit 1
 
 echo ""
 
@@ -254,7 +251,6 @@ echo -e "  Admin UI:  ${BLUE}http://localhost:8001/admin${NC}"
 echo -e "  API:       ${BLUE}http://localhost:8000${NC}"
 echo -e "  API Docs:  ${BLUE}http://localhost:8000/docs${NC}"
 echo -e "========================================="
-echo -e "${YELLOW}Admin Credentials:${NC}"
 ADMIN_USER=$(grep "^ADMIN_USERNAME=" .env 2>/dev/null | cut -d= -f2 || echo "admin")
 ADMIN_PASS=$(grep "^ADMIN_PASSWORD=" .env 2>/dev/null | cut -d= -f2 || echo "(not set)")
 echo -e "  Username:  ${BLUE}${ADMIN_USER}${NC}"

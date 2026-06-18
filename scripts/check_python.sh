@@ -2,7 +2,7 @@
 set -e
 
 # Define directories to check
-TARGETS="src tests terminal-container"
+TARGETS="src tests containers/base"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -69,7 +69,6 @@ echo ""
 
 # 3. Type Checking (MyPy)
 echo -e "${YELLOW}3. Running Type Checker (mypy)...${NC}"
-# We ignore missing imports for now as setting up perfect types for all deps might be overkill for this script
 if mypy --ignore-missing-imports --install-types --non-interactive $TARGETS; then
     echo -e "${GREEN}✓ Type checks passed.${NC}"
 else

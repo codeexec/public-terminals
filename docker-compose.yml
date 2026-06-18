@@ -2,7 +2,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: terminal-server-db
+    container_name: sandbox-server-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -20,7 +20,7 @@ services:
   # Redis (for Celery)
   redis:
     image: redis:7-alpine
-    container_name: terminal-server-redis
+    container_name: sandbox-server-redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -34,7 +34,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: terminal-server-api
+    container_name: sandbox-server-api
     ports:
       - "8000:8000"
     environment:
@@ -42,7 +42,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      # API_BASE_URL must be externally reachable for both Docker and GKE containers
+      # API_BASE_URL must be externally reachable
       - API_BASE_URL=${API_BASE_URL:-https://terminal.newsml.io}
       - WEB_BASE_URL=http://web-server:8001
       - LOG_LEVEL=INFO
@@ -55,7 +55,7 @@ services:
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
       # Container platform configuration
       - CONTAINER_PLATFORM=${CONTAINER_PLATFORM:-docker}
-      - TERMINAL_IMAGE=${TERMINAL_IMAGE:-terminal-server:latest}
+      - SANDBOX_BASE_IMAGE=${SANDBOX_BASE_IMAGE:-terminal-server:latest}
       # Kubernetes/GKE configuration
       - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
       - K8S_IN_CLUSTER=${K8S_IN_CLUSTER:-false}
@@ -75,11 +75,11 @@ services:
       - KUBECONFIG=/root/.kube/config
       - CLOUDSDK_CONFIG=/root/.config/gcloud
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock  # For Docker-in-Docker
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./src:/app/src
-      - ./terminal-container:/app/terminal-container  # For terminal files and gVisor resolv.conf
-      - /home/jupyter/.kube:/root/.kube:ro  # Mount kubeconfig for GKE access
-      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud  # Mount gcloud credentials (rw for token refresh)
+      - ./containers/base:/app/containers/base
+      - /home/jupyter/.kube:/root/.kube:ro
+      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,7 +92,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: terminal-server-web
+    container_name: sandbox-server-web
     ports:
       - "8001:8001"
     environment:
@@ -111,12 +111,12 @@ services:
         condition: service_healthy
     command: uvicorn src.web_server:app --host 0.0.0.0 --port 8001 --reload
 
-  # Celery Worker (for cleanup tasks)
+  # Celery Worker
   celery-worker:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: terminal-server-celery
+    container_name: sandbox-server-celery
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
       - REDIS_URL=redis://redis:6379/0
@@ -126,14 +126,11 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
-      # Container platform configuration
       - CONTAINER_PLATFORM=${CONTAINER_PLATFORM:-docker}
-      - TERMINAL_IMAGE=${TERMINAL_IMAGE:-terminal-server:latest}
-      # Kubernetes/GKE configuration
+      - SANDBOX_BASE_IMAGE=${SANDBOX_BASE_IMAGE:-terminal-server:latest}
       - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
       - K8S_IN_CLUSTER=${K8S_IN_CLUSTER:-false}
       - GKE_AUTOPILOT_ENABLED=${GKE_AUTOPILOT_ENABLED:-false}
-      # GPU configuration
       - GPU_ENABLED=${GPU_ENABLED:-false}
       - GPU_TYPE=${GPU_TYPE:-nvidia-l4}
       - GPU_COUNT=${GPU_COUNT:-1}
@@ -142,21 +139,21 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./src:/app/src
-      - ./terminal-container:/app/terminal-container  # For terminal files and gVisor resolv.conf
-      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro  # Mount kubeconfig for GKE access
-      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud  # Mount gcloud credentials (rw for token refresh)
+      - ./containers/base:/app/containers/base
+      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro
+      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud
     depends_on:
       - api-server
       - postgres
       - redis
     command: celery -A src.celery_app worker --loglevel=info
 
-  # Celery Beat (scheduler for periodic cleanup)
+  # Celery Beat
   celery-beat:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: terminal-server-celery-beat
+    container_name: sandbox-server-celery-beat
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/terminal_server
       - REDIS_URL=redis://redis:6379/0
@@ -171,8 +168,8 @@ services:
       - CLOUDSDK_CONFIG=/root/.config/gcloud
     volumes:
       - ./src:/app/src
-      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro  # Mount kubeconfig for GKE access
-      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud  # Mount gcloud credentials (rw for token refresh)
+      - ${HOST_KUBE_DIR:-${HOME}/.kube}:/root/.kube:ro
+      - ${HOST_GCLOUD_DIR:-${HOME}/.config/gcloud}:/root/.config/gcloud
     depends_on:
       - api-server
       - postgres
@@ -182,7 +179,7 @@ services:
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
-    container_name: terminal-server-nginx
+    container_name: sandbox-server-nginx
     ports:
       - "80:80"
       - "443:443"

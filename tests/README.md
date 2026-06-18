@@ -1,46 +1,37 @@
-# Tests Directory
+# Sandbox Server Tests
 
-This directory contains Python tests for the Terminal Server API.
+This directory contains Python tests for the Sandbox Server API.
+
+## Running Tests
+
+### 1. Unit Tests
+Tests that don't require external services (Docker, DB):
+```bash
+pytest -m unit
+```
+
+### 2. Integration Tests
+Tests that require a running API server and database:
+```bash
+pytest -m integration
+```
+
+### 3. Run All Tests
+```bash
+pytest
+```
 
 ## Test Files
 
-### `test_api.py`
-Integration tests for the Terminal Server API endpoints:
-- Health check
-- Terminal creation
-- Terminal retrieval
-- Terminal listing
-- Terminal deletion
-- Status polling
-
-**Usage:**
-```bash
-# Direct execution
-python3 tests/test_api.py
-
-# Via make
-make test-api
-
-# Using pytest (recommended)
-pytest tests/test_api.py
-pytest tests/test_api.py -v          # Verbose
-pytest tests/test_api.py -k "health"  # Run specific test
-```
-
-## Test Configuration
-
-- **pytest.ini**: Located in project root, configures pytest behavior
-- Test markers:
-  - `@pytest.mark.integration`: Tests requiring running services
-  - `@pytest.mark.unit`: Standalone unit tests
+- `test_api.py`: Core Sandbox CRUD operations.
+- `test_admin_security.py`: Admin login and JWT verification.
+- `test_admin_stats.py`: System and sandbox resource usage stats.
+- `test_container_limits.py`: Max container capacity enforcement.
+- `test_stopped_sandboxes.py`: Auto-restart and lifecycle of stopped sandboxes.
 
 ## Requirements
-
-Ensure the API server is running before executing tests:
-```bash
-docker-compose up -d
-# or
-make up
-```
-
-API should be available at `http://localhost:8000`
+- `pytest`
+- `pytest-asyncio`
+- `httpx`
+- `sqlalchemy`
+- `pydantic`

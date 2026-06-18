@@ -1,3 +1,1 @@
-"""
-Tests for Terminal Server
-"""
+"""Tests for Sandbox Server"""

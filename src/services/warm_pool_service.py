@@ -1,5 +1,5 @@
 """
-Warm Pool Service - Manages pre-warmed terminal containers for instant startup
+Warm Pool Service - Manages pre-warmed sandbox containers for instant startup
 
 This service maintains a pool of pre-started containers that are ready to be
 assigned to users immediately, eliminating cold start latency.
@@ -7,8 +7,8 @@ assigned to users immediately, eliminating cold start latency.
 Architecture:
 1. Warm containers start with a temporary "warm-{uuid}" identifier
 2. They report their tunnel URL to a special warm pool callback endpoint
-3. When a user requests a terminal, we "claim" a warm container
-4. The warm container's tunnel URL is transferred to the new terminal record
+3. When a user requests a sandbox, we "claim" a warm container
+4. The warm container's tunnel URL is transferred to the new sandbox record
 5. A background task continuously replenishes the pool
 """
 
@@ -41,7 +41,7 @@ class WarmContainer:
 
 class WarmPoolService:
     """
-    Manages a pool of pre-warmed containers for instant terminal startup.
+    Manages a pool of pre-warmed containers for instant sandbox startup.
 
     The pool maintains WARM_POOL_SIZE containers that are fully initialized
     and ready to serve users immediately.
@@ -108,7 +108,7 @@ class WarmPoolService:
             # Cleanup non-GPU pool
             for warm_id, container in list(self._pool.items()):
                 try:
-                    await container_service.delete_terminal_container(
+                    await container_service.delete_sandbox_container(
                         container.container_id
                     )
                     logger.info(f"Cleaned up warm container {warm_id}")
@@ -119,7 +119,7 @@ class WarmPoolService:
             # Cleanup GPU pool
             for warm_id, container in list(self._gpu_pool.items()):
                 try:
-                    await container_service.delete_terminal_container(
+                    await container_service.delete_sandbox_container(
                         container.container_id
                     )
                     logger.info(f"Cleaned up GPU warm container {warm_id}")
@@ -236,8 +236,8 @@ class WarmPoolService:
         container_service = get_container_service()
 
         try:
-            # Create container with warm_id as the terminal_id
-            result = await container_service.create_terminal_container(
+            # Create container with warm_id as the sandbox_id
+            result = await container_service.create_sandbox_container(
                 warm_id, use_gpu=use_gpu
             )
 
@@ -337,14 +337,14 @@ class WarmPoolService:
                 "gpu_warming_containers": gpu_total - gpu_ready,
             }
 
-    def is_warm_id(self, terminal_id: str) -> bool:
-        """Check if a terminal_id is a warm pool ID (GPU or non-GPU)"""
-        return terminal_id.startswith("warm-")
+    def is_warm_id(self, sandbox_id: str) -> bool:
+        """Check if a sandbox_id is a warm pool ID (GPU or non-GPU)"""
+        return sandbox_id.startswith("warm-")
 
     async def return_container(self, warm_container: WarmContainer):
         """
         Return an unclaimed container back to the appropriate pool.
-        Used when terminal creation fails after claiming.
+        Used when sandbox creation fails after claiming.
         """
         async with self._lock:
             if warm_container.gpu_enabled:
