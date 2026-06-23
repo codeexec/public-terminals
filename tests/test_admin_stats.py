@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch, AsyncMock
 from src.api.routes.admin import get_admin_stats
-from src.database.models import Sandbox, SandboxType
+from src.database.models import Sandbox
 
 
 @pytest.mark.unit
@@ -32,12 +32,9 @@ async def test_get_admin_stats():
     mock_sandbox.gpu_type = None
     mock_sandbox.gpu_count = None
 
-    # Mock the chain: query -> filter -> order_by -> all
-    # Because we added order_by to the production code, we must mock it
-    mock_filter = mock_db.query.return_value.filter.return_value
-    mock_filter.order_by.return_value.all.return_value = [mock_sandbox]
-    # Keep this for backward compatibility or if order_by is conditionally skipped (though it isn't here)
-    mock_filter.all.return_value = [mock_sandbox]
+    # Mock repository
+    mock_repo = MagicMock()
+    mock_repo.list_all = AsyncMock(return_value=[mock_sandbox])
 
     # Mock stats service
     mock_system_stats = {
@@ -52,9 +49,8 @@ async def test_get_admin_stats():
         "memory_percent": 12.5,
     }
 
-    # Patch the StatsService instance method used in the route
-    # Note: The route imports stats_service instance, so we need to patch that
     with (
+        patch("src.api.routes.admin.SandboxRepository", return_value=mock_repo),
         patch(
             "src.services.stats_service.stats_service.get_system_stats",
             return_value=mock_system_stats,
@@ -87,19 +83,16 @@ async def test_get_admin_stats_excludes_deleted():
     """Test that deleted sandboxes are excluded from stats"""
     mock_db = MagicMock()
 
-    # We can't easily test the SQLAlchemy filter composition with a simple mock,
-    # but we can ensure the code runs without error and returns what the DB returns.
-    # To truly test the filter, we'd need an integration test with a real DB or
-    # inspect the calls to filter().
+    mock_repo = MagicMock()
+    mock_repo.list_all = AsyncMock(return_value=[])
 
-    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-
-    with patch(
-        "src.services.stats_service.stats_service.get_system_stats", return_value={}
+    with (
+        patch("src.api.routes.admin.SandboxRepository", return_value=mock_repo),
+        patch(
+            "src.services.stats_service.stats_service.get_system_stats", return_value={}
+        ),
     ):
         await get_admin_stats(current_admin="admin", db=mock_db)
 
-        # Verify that filter was called with multiple arguments
-        # The exact verification is tricky with generic mocks, but we can check call count
-        assert mock_db.query.called
-        assert mock_db.query.return_value.filter.called
+        # Verify that repo list_all was called
+        assert mock_repo.list_all.called

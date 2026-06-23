@@ -2,46 +2,31 @@
 SQLAlchemy database models
 """
 
-from sqlalchemy import String, DateTime, Enum as SQLEnum, Boolean, Integer
+from sqlalchemy import String, DateTime, Enum as SQLEnum, Boolean, Integer, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta, timezone
 import uuid
-import enum
+from src.constants import SandboxStatus, SandboxType
 
 
 class Base(DeclarativeBase):
     pass
 
 
-class SandboxStatus(str, enum.Enum):
-    """Sandbox status enumeration"""
-
-    PENDING = "PENDING"
-    STARTING = "STARTING"
-    STARTED = "STARTED"
-    STOPPED = "STOPPED"
-    EXPIRED = "EXPIRED"
-    FAILED = "FAILED"
-
-
-class SandboxType(str, enum.Enum):
-    """Sandbox type enumeration"""
-
-    TERMINAL = "TERMINAL"
-    JUPYTERLITE = "JUPYTERLITE"
-
-
 class Sandbox(Base):
     """Sandbox instance model"""
 
     __tablename__ = "sandboxes"
+    __table_args__ = (
+        Index("ix_sandboxes_status_user_id", "status", "user_id"),
+    )
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     status: Mapped[SandboxStatus] = mapped_column(
-        SQLEnum(SandboxStatus), default=SandboxStatus.PENDING, nullable=False
+        SQLEnum(SandboxStatus), default=SandboxStatus.PENDING, nullable=False, index=True
     )
     type: Mapped[SandboxType] = mapped_column(
         SQLEnum(SandboxType), default=SandboxType.TERMINAL, nullable=False
@@ -68,7 +53,7 @@ class Sandbox(Base):
         DateTime(timezone=True), nullable=True
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=True, index=True
     )
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

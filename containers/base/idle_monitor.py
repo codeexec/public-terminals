@@ -139,7 +139,7 @@ class IdleMonitor:
         """Main monitoring loop"""
         timeout_minutes = self.idle_timeout_seconds // 60
         logger.info(
-            f"Idle monitor started for terminal {self.terminal_id} "
+            f"Idle monitor started for sandbox {self.sandbox_id} "
             f"(timeout: {timeout_minutes} minutes / {self.idle_timeout_seconds} seconds, "
             f"check interval: {self.check_interval_seconds}s)"
         )
@@ -185,7 +185,7 @@ class IdleMonitor:
                 # Wait before next check
                 time.sleep(self.check_interval_seconds)
 
-            except KeyboardInterrupt:
+            except KeyboardInterrupt:  # noqa: PERF203
                 logger.info("Idle monitor stopped")
                 break
             except Exception as e:
@@ -204,7 +204,7 @@ def main():
     if not sandbox_id or not api_callback_url or not callback_token:
         logger.error(
             "Missing required environment variables: "
-            "TERMINAL_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
+            "SANDBOX_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
         )
         sys.exit(1)
 

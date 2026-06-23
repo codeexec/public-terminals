@@ -5,46 +5,16 @@ Handles all API operations, container management, and database writes
 
 import logging
 import uvicorn
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import FastAPI
 
 from src.config import settings
-from src.database.session import init_db
 from src.api.routes import sandboxes, callbacks, admin
 from src.api.schemas import HealthResponse
-from src.services.warm_pool_service import get_warm_pool_service
+from src.api.middleware import setup_middleware
+from src.api.lifespan import create_lifespan
 
 
 _API_VERSION = "1.0.0"
-_DEFAULT_PASSWORD = "changeme"
-
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Middleware to add security headers to all responses"""
-
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-
-        # Security headers
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        if request.url.scheme == "https":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
-            "font-src 'self' cdn.jsdelivr.net; "
-            "img-src 'self' data:; "
-            "connect-src 'self'"
-        )
-
-        return response
 
 
 def configure_logging():
@@ -54,68 +24,6 @@ def configure_logging():
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     return logging.getLogger(__name__)
-
-
-def create_lifespan(logger):
-    """Create lifespan context manager"""
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        logger.info("Starting Sandbox Server API")
-        logger.info(f"Container Platform: {settings.CONTAINER_PLATFORM}")
-        logger.info(f"Sandbox TTL: {settings.SANDBOX_TTL_HOURS} hours")
-
-        # Enforce strong admin credentials
-        if settings.ADMIN_PASSWORD == _DEFAULT_PASSWORD:
-            logger.error(
-                "SECURITY ERROR: Default ADMIN_PASSWORD 'changeme' detected. "
-                "The server will not start with default credentials. "
-                "Please set a strong password using the ADMIN_PASSWORD environment variable."
-            )
-            raise ValueError(
-                "Default admin password detected. Set ADMIN_PASSWORD environment variable to a strong password."
-            )
-
-        # Validate password strength
-        if len(settings.ADMIN_PASSWORD) < 12:
-            logger.error(
-                f"SECURITY ERROR: ADMIN_PASSWORD is too short ({len(settings.ADMIN_PASSWORD)} characters). "
-                "Minimum length is 12 characters."
-            )
-            raise ValueError("Admin password must be at least 12 characters long.")
-
-        try:
-            init_db()
-            logger.info("Database initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
-            raise
-
-        # Start warm pool service if enabled
-        warm_pool = None
-        if settings.WARM_POOL_ENABLED:
-            try:
-                warm_pool = get_warm_pool_service()
-                await warm_pool.start()
-                logger.info(
-                    f"Warm pool service started (size={settings.WARM_POOL_SIZE})"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to start warm pool service: {e}")
-
-        yield
-
-        # Stop warm pool service
-        if warm_pool:
-            try:
-                await warm_pool.stop()
-                logger.info("Warm pool service stopped")
-            except Exception as e:
-                logger.warning(f"Error stopping warm pool service: {e}")
-
-        logger.info("Shutting down Sandbox Server API")
-
-    return lifespan
 
 
 def create_app():
@@ -129,31 +37,10 @@ def create_app():
         lifespan=create_lifespan(logger),
     )
 
-    # Add security headers middleware
-    app.add_middleware(SecurityHeadersMiddleware)
+    # Setup middleware (Security headers and CORS)
+    setup_middleware(app)
 
-    # CORS configuration - restrictive for security
-    allowed_origins = [
-        "http://localhost:8001",
-        "http://127.0.0.1:8001",
-    ]
-    # Only add WEB_BASE_URL if it's different from defaults
-    if settings.WEB_BASE_URL not in allowed_origins:
-        allowed_origins.append(settings.WEB_BASE_URL)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=[
-            "Content-Type",
-            "Authorization",
-            "X-Guest-ID",
-        ],
-        max_age=600,
-    )
-
+    # Include routers
     app.include_router(sandboxes.router, prefix="/api/v1")
     app.include_router(callbacks.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
@@ -172,7 +59,7 @@ def main():
         factory=True,
         host=settings.API_HOST,
         port=settings.API_PORT,
-        reload=True,
+        reload=settings.LOG_LEVEL == "DEBUG",
         log_level=settings.LOG_LEVEL.lower(),
     )
 

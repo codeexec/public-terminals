@@ -43,7 +43,8 @@ def create_app():
 
         # Replace the API_BASE hardcoded value with the dynamic one from settings
         # The JavaScript in index.html will use this injected value
-        api_base_script = f"        const API_BASE = '{settings.API_BASE_URL}/api/v1';"
+        import json
+        api_base_script = f"        const API_BASE = {json.dumps(settings.API_BASE_URL + '/api/v1')};"
         modified_html_content = html_content.replace(
             "        const API_BASE = 'http://localhost:8000/api/v1';",  # Old hardcoded line
             api_base_script,
@@ -80,7 +81,7 @@ def main():
         factory=True,
         host=settings.WEB_HOST,
         port=settings.WEB_PORT,
-        reload=True,
+        reload=settings.LOG_LEVEL == "DEBUG",
         log_level=settings.LOG_LEVEL.lower(),
     )
 

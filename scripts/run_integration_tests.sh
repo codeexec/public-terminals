@@ -122,7 +122,7 @@ echo ""
 
 for i in {1..60}; do
     STATUS_RESPONSE=$(curl -s http://localhost:8000/api/v1/sandboxes/${SANDBOX_ID})
-    STATUS=$(echo "$STATUS_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "unknown")
+    STATUS=$(echo "$STATUS_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['status'].lower())" 2>/dev/null || echo "unknown")
     TUNNEL_URL=$(echo "$STATUS_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tunnel_url', ''))" 2>/dev/null || echo "")
 
     echo -ne "\r  Polling status... Attempt ${i}/60 - Status: ${YELLOW}${STATUS}${NC}     "
@@ -215,7 +215,12 @@ fi
 
 # Test sandbox container health endpoint
 echo -n "  Sandbox Container /health: "
-HEALTH=$(docker exec sandbox-server-api curl -s http://${CONTAINER_NAME}:8888/health)
+PLATFORM=$(grep "^CONTAINER_PLATFORM=" .env 2>/dev/null | cut -d= -f2 || echo "docker")
+if [ "$PLATFORM" = "kubernetes" ]; then
+    HEALTH=$(curl -s -k ${TUNNEL_URL}/health)
+else
+    HEALTH=$(docker exec sandbox-server-api curl -s http://${CONTAINER_NAME}:8888/health)
+fi
 HEALTH_STATUS=$(echo "$HEALTH" | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "failed")
 if [ "$HEALTH_STATUS" = "healthy" ]; then
     echo -e "${GREEN}✓ healthy${NC}"
@@ -225,7 +230,11 @@ fi
 
 # Test sandbox container status endpoint
 echo -n "  Sandbox Container /status: "
-STATUS_EP=$(docker exec sandbox-server-api curl -s http://${CONTAINER_NAME}:8888/status)
+if [ "$PLATFORM" = "kubernetes" ]; then
+    STATUS_EP=$(curl -s -k ${TUNNEL_URL}/status)
+else
+    STATUS_EP=$(docker exec sandbox-server-api curl -s http://${CONTAINER_NAME}:8888/status)
+fi
 STATUS_STATE=$(echo "$STATUS_EP" | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "failed")
 if [ "$STATUS_STATE" = "ready" ]; then
     echo -e "${GREEN}✓ ready${NC}"
@@ -244,8 +253,8 @@ echo -e "${BLUE}STEP 6: Testing Admin API${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-ADMIN_USER=$(grep "^ADMIN_USERNAME=" .env 2>/dev/null | cut -d= -f2 || echo "admin")
-ADMIN_PASS=$(grep "^ADMIN_PASSWORD=" .env 2>/dev/null | cut -d= -f2 || echo "changeme")
+ADMIN_USER=$(grep "^ADMIN_USERNAME=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "admin")
+ADMIN_PASS=$(grep "^ADMIN_PASSWORD=" .env 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "changeme")
 
 # Test admin login
 echo -n "  Admin Login: "

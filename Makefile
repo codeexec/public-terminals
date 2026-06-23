@@ -76,11 +76,11 @@ test:
 
 test-full:
 	@echo "Running full integration test..."
-	./scripts/run_test.sh
+	./scripts/run_integration_tests.sh
 
 test-api:
 	@echo "Running Python API tests..."
-	python3 tests/test_api.py
+	python -m pytest tests/ --tb=short
 
 setup:
 	@echo "Running setup script..."

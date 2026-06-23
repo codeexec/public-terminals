@@ -186,7 +186,7 @@ class IdleMonitor:
                 # Wait before next check
                 time.sleep(self.check_interval_seconds)
 
-            except KeyboardInterrupt:
+            except KeyboardInterrupt:  # noqa: PERF203
                 logger.info("Idle monitor stopped")
                 break
             except Exception as e:

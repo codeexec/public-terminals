@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timedelta, timezone
 
 from src.api.routes.admin import get_admin_stats
@@ -56,14 +56,14 @@ async def test_admin_stats_includes_stopped_active_sandboxes():
     s2.gpu_type = None
     s2.gpu_count = None
 
-    # We will simulate the DB returning the list that matches the filter.
-    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-        s1,
-        s2,
-    ]
+    # Mock SandboxRepository list_all
+    mock_repo = MagicMock()
+    mock_repo.list_all = AsyncMock(return_value=[s1, s2])
 
     with patch(
         "src.services.stats_service.stats_service.get_system_stats", return_value={}
+    ), patch(
+        "src.api.routes.admin.SandboxRepository", return_value=mock_repo
     ):
         result = await get_admin_stats(current_admin="admin", db=mock_db)
 
@@ -78,30 +78,36 @@ async def test_admin_stats_includes_stopped_active_sandboxes():
 async def test_start_sandbox_endpoint():
     """Test the start_sandbox endpoint logic"""
     mock_db = MagicMock()
+    mock_db.commit = AsyncMock()
     mock_bg_tasks = MagicMock()
 
     # Case 1: Sandbox found and stopped
     sandbox = MagicMock(spec=Sandbox)
     sandbox.id = "s1"
+    sandbox.type = "terminal"
     sandbox.status = SandboxStatus.STOPPED
     sandbox.is_expired.return_value = False
     sandbox.gpu_enabled = False  # Add GPU enabled attribute
 
-    mock_db.query.return_value.filter.return_value.first.return_value = sandbox
+    # Mock SandboxRepository get_by_id
+    mock_repo = MagicMock()
+    mock_repo.get_by_id = AsyncMock(return_value=sandbox)
 
-    await start_sandbox("s1", mock_bg_tasks, db=mock_db)
+    with patch(
+        "src.services.sandbox_service.SandboxRepository", return_value=mock_repo
+    ):
+        await start_sandbox("s1", mock_bg_tasks, db=mock_db)
 
     assert sandbox.status == SandboxStatus.PENDING
     assert sandbox.error_message is None
     mock_db.commit.assert_called()
 
     # Check background task was added with restart=True and use_gpu from sandbox
-    from src.api.routes.sandboxes import _create_sandbox_background
+    from src.services.sandbox_service import _create_sandbox_background
 
     mock_bg_tasks.add_task.assert_called_with(
         _create_sandbox_background,
         "s1",
-        mock_db,
         restart=True,
         use_gpu=False,
         sandbox_type=sandbox.type,
@@ -120,10 +126,15 @@ async def test_start_sandbox_endpoint_expired():
     sandbox.status = SandboxStatus.STOPPED
     sandbox.is_expired.return_value = True
 
-    mock_db.query.return_value.filter.return_value.first.return_value = sandbox
+    # Mock SandboxRepository get_by_id
+    mock_repo = MagicMock()
+    mock_repo.get_by_id = AsyncMock(return_value=sandbox)
 
-    with pytest.raises(HTTPException) as exc:
-        await start_sandbox("s1", mock_bg_tasks, db=mock_db)
+    with patch(
+        "src.services.sandbox_service.SandboxRepository", return_value=mock_repo
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await start_sandbox("s1", mock_bg_tasks, db=mock_db)
 
     assert exc.value.status_code == 400
     assert "expired" in exc.value.detail.lower()
@@ -141,9 +152,14 @@ async def test_start_sandbox_endpoint_wrong_status():
     sandbox.status = SandboxStatus.STARTED
     sandbox.is_expired.return_value = False
 
-    mock_db.query.return_value.filter.return_value.first.return_value = sandbox
+    # Mock SandboxRepository get_by_id
+    mock_repo = MagicMock()
+    mock_repo.get_by_id = AsyncMock(return_value=sandbox)
 
-    with pytest.raises(HTTPException) as exc:
-        await start_sandbox("s1", mock_bg_tasks, db=mock_db)
+    with patch(
+        "src.services.sandbox_service.SandboxRepository", return_value=mock_repo
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await start_sandbox("s1", mock_bg_tasks, db=mock_db)
 
     assert exc.value.status_code == 400

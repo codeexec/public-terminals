@@ -12,10 +12,10 @@ async def test_create_sandbox_limit_exceeded_db():
 
     # Mock DB session
     mock_db = MagicMock()
-    # Mock count to be at the limit
-    mock_db.query.return_value.filter.return_value.count.return_value = (
-        settings.MAX_CONTAINERS_PER_SERVER
-    )
+    
+    # Mock SandboxRepository count_active_total to be at limit
+    mock_repo = MagicMock()
+    mock_repo.count_active_total = AsyncMock(return_value=settings.MAX_CONTAINERS_PER_SERVER)
 
     # Mock background tasks
     mock_background_tasks = MagicMock()
@@ -30,8 +30,11 @@ async def test_create_sandbox_limit_exceeded_db():
     mock_sandbox_create.type = "terminal"
 
     with patch(
-        "src.api.routes.sandboxes.get_container_service",
+        "src.services.sandbox_service.get_container_service",
         return_value=mock_container_service,
+    ), patch(
+        "src.services.sandbox_service.SandboxRepository",
+        return_value=mock_repo,
     ):
         with pytest.raises(HTTPException) as exc_info:
             await create_sandbox(
@@ -52,10 +55,10 @@ async def test_create_sandbox_limit_exceeded_real():
 
     # Mock DB session
     mock_db = MagicMock()
+    
     # Mock count to be below limit
-    mock_db.query.return_value.filter.return_value.count.return_value = (
-        settings.MAX_CONTAINERS_PER_SERVER - 1
-    )
+    mock_repo = MagicMock()
+    mock_repo.count_active_total = AsyncMock(return_value=settings.MAX_CONTAINERS_PER_SERVER - 1)
 
     # Mock background tasks
     mock_background_tasks = MagicMock()
@@ -72,8 +75,11 @@ async def test_create_sandbox_limit_exceeded_real():
     mock_sandbox_create.type = "terminal"
 
     with patch(
-        "src.api.routes.sandboxes.get_container_service",
+        "src.services.sandbox_service.get_container_service",
         return_value=mock_container_service,
+    ), patch(
+        "src.services.sandbox_service.SandboxRepository",
+        return_value=mock_repo,
     ):
         with pytest.raises(HTTPException) as exc_info:
             await create_sandbox(
@@ -94,7 +100,13 @@ async def test_create_sandbox_success():
 
     # Mock DB session
     mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.count.return_value = 10
+    mock_db.commit = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    
+    # Mock Repository methods
+    mock_repo = MagicMock()
+    mock_repo.count_active_total = AsyncMock(return_value=10)
+    mock_repo.create = AsyncMock()
 
     # Mock background tasks
     mock_background_tasks = MagicMock()
@@ -113,18 +125,20 @@ async def test_create_sandbox_success():
     mock_sandbox_create.type = "terminal"
 
     with patch(
-        "src.api.routes.sandboxes.get_container_service",
+        "src.services.sandbox_service.get_container_service",
         return_value=mock_container_service,
+    ), patch(
+        "src.services.sandbox_service.get_warm_pool_service",
+        return_value=mock_warm_pool,
+    ), patch(
+        "src.services.sandbox_service.SandboxRepository",
+        return_value=mock_repo,
     ):
-        with patch(
-            "src.api.routes.sandboxes.get_warm_pool_service",
-            return_value=mock_warm_pool,
-        ):
-            result = await create_sandbox(
-                sandbox_create=mock_sandbox_create,
-                background_tasks=mock_background_tasks,
-                x_guest_id="test",
-                db=mock_db,
-            )
+        result = await create_sandbox(
+            sandbox_create=mock_sandbox_create,
+            background_tasks=mock_background_tasks,
+            x_guest_id="test",
+            db=mock_db,
+        )
 
-            assert result.status == SandboxStatus.PENDING
+        assert result.status == SandboxStatus.PENDING

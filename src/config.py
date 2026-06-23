@@ -3,13 +3,14 @@ Configuration management for Terminal Server
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from typing import Literal
 
 
 class Settings(BaseSettings):
     ADMIN_PASSWORD: str = "changeme"
     ADMIN_USERNAME: str = "admin"
+    ENV: str = "development"
 
     API_BASE_URL: str = "http://localhost:8000"
     API_HOST: str = "0.0.0.0"
@@ -41,6 +42,21 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_ALGORITHM: str = "HS256"
     JWT_SECRET_KEY: str = ""
+    CALLBACK_SECRET: str = ""
+    ALLOWED_CORS_ORIGINS: list[str] = ["*"]
+    POLL_INTERVAL_BASE: float = 0.5
+    WARM_POOL_REPLENISH_INTERVAL: int = 5
+    WARM_POOL_MAX_PARALLEL_CREATES: int = 2
+
+    @model_validator(mode="after")
+    def validate_security_settings(self) -> "Settings":
+        if self.ENV == "production" and self.ADMIN_PASSWORD == "changeme":
+            raise ValueError(
+                "ADMIN_PASSWORD must be changed from the default 'changeme' in production environment!"
+            )
+        if not self.CALLBACK_SECRET:
+            self.CALLBACK_SECRET = self.JWT_SECRET_KEY
+        return self
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

@@ -26,7 +26,7 @@ def generate_callback_token(sandbox_id: str) -> str:
         Hexadecimal HMAC token
     """
     message = f"callback:{sandbox_id}".encode("utf-8")
-    secret = settings.JWT_SECRET_KEY.encode("utf-8")
+    secret = settings.CALLBACK_SECRET.encode("utf-8")
 
     token = hmac.new(secret, message, hashlib.sha256).hexdigest()
     return token

@@ -30,7 +30,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
             minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
-    to_encode.update({"exp": expire})
+    to_encode.update({
+        "exp": expire,
+        "iss": "sandbox-server",
+        "aud": "sandbox-admin",
+    })
     encoded_jwt = str(
         jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     )
@@ -50,7 +54,11 @@ def verify_token(token: str) -> Optional[str]:
     """
     try:
         payload = jwt.decode(
-            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            issuer="sandbox-server",
+            audience="sandbox-admin",
         )
         username: str = payload.get("sub")
         return username

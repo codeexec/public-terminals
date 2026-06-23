@@ -48,7 +48,7 @@ def collect_stats():
                 for p in psutil.process_iter(["memory_info"]):
                     try:
                         memory_usage_bytes += p.info["memory_info"].rss
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):  # noqa: PERF203
                         pass
 
         except Exception as e:
@@ -58,7 +58,7 @@ def collect_stats():
                 for p in psutil.process_iter(["memory_info"]):
                     try:
                         memory_usage_bytes += p.info["memory_info"].rss
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):  # noqa: PERF203
                         pass
 
         # Validate Limit

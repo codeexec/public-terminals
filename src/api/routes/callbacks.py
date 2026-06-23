@@ -7,11 +7,12 @@ SECURITY: All endpoints require callback authentication via HMAC token
 
 import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from src.database.session import get_db
 from src.database.models import Sandbox, SandboxStatus
+from src.repositories.sandbox_repo import SandboxRepository
 from src.api.schemas import SandboxCallbackRequest
 from src.auth.callback_auth import verify_callback_token, extract_bearer_token
 from src.services.warm_pool_service import get_warm_pool_service
@@ -62,7 +63,7 @@ def verify_callback_authentication(
 @router.post("/tunnel", status_code=status.HTTP_200_OK)
 async def report_tunnel_url(
     callback: SandboxCallbackRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
@@ -91,7 +92,8 @@ async def report_tunnel_url(
         }
 
     # Find the sandbox
-    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
+    repo = SandboxRepository(db)
+    sandbox = await repo.get_by_id(s_id)
 
     if not sandbox:
         logger.error(f"Sandbox {s_id} not found")
@@ -104,8 +106,8 @@ async def report_tunnel_url(
     sandbox.tunnel_url = callback.tunnel_url
     sandbox.status = SandboxStatus.STARTED
 
-    db.commit()
-    db.refresh(sandbox)
+    await db.commit()
+    await db.refresh(sandbox)
 
     logger.info(
         f"Updated sandbox {s_id} with tunnel URL: {callback.tunnel_url}"
@@ -121,7 +123,7 @@ async def report_tunnel_url(
 @router.post("/status", status_code=status.HTTP_200_OK)
 async def report_status(
     callback: SandboxCallbackRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
@@ -137,7 +139,8 @@ async def report_status(
     )
 
     # Find the sandbox
-    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
+    repo = SandboxRepository(db)
+    sandbox = await repo.get_by_id(s_id)
 
     if not sandbox:
         logger.error(f"Sandbox {s_id} not found")
@@ -159,8 +162,8 @@ async def report_status(
         sandbox.error_message = callback.error_message
         sandbox.status = SandboxStatus.FAILED
 
-    db.commit()
-    db.refresh(sandbox)
+    await db.commit()
+    await db.refresh(sandbox)
 
     logger.info(f"Updated sandbox {s_id} status to: {sandbox.status}")
 
@@ -174,7 +177,7 @@ async def report_status(
 @router.post("/health", status_code=status.HTTP_200_OK)
 async def container_health_check(
     callback: SandboxCallbackRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
@@ -186,7 +189,8 @@ async def container_health_check(
     s_id = get_actual_sandbox_id(callback)
 
     # Find the sandbox
-    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
+    repo = SandboxRepository(db)
+    sandbox = await repo.get_by_id(s_id)
 
     if not sandbox:
         logger.error(f"Sandbox {s_id} not found")
@@ -197,7 +201,7 @@ async def container_health_check(
 
     # Track activity for idle timeout detection
     sandbox.set_last_activity()
-    db.commit()
+    await db.commit()
 
     # Just acknowledging the health check
     return {"status": "healthy", "sandbox_id": sandbox.id}
@@ -206,7 +210,7 @@ async def container_health_check(
 @router.post("/stats", status_code=status.HTTP_200_OK)
 async def report_stats(
     callback: SandboxCallbackRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     # Verify authentication
@@ -215,19 +219,15 @@ async def report_stats(
     s_id = get_actual_sandbox_id(callback)
 
     # First try to find the sandbox directly
-    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
+    repo = SandboxRepository(db)
+    sandbox = await repo.get_by_id(s_id)
 
     # If not found, and it looks like a warm ID, check if it was claimed
     if not sandbox and s_id.startswith("warm-"):
         # The container_name is deterministically derived from the warm ID
         # warm-123 -> sandbox-warm-123
         expected_container_name = f"sandbox-{s_id}"
-
-        sandbox = (
-            db.query(Sandbox)
-            .filter(Sandbox.container_name == expected_container_name)
-            .first()
-        )
+        sandbox = await repo.get_by_container_name(expected_container_name)
 
         if sandbox:
             logger.info(
@@ -279,7 +279,7 @@ async def report_stats(
 @router.post("/idle", status_code=status.HTTP_200_OK)
 async def report_idle_shutdown(
     callback: SandboxCallbackRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None),
 ):
     """
@@ -295,7 +295,8 @@ async def report_idle_shutdown(
     )
 
     # Find the sandbox
-    sandbox = db.query(Sandbox).filter(Sandbox.id == s_id).first()
+    repo = SandboxRepository(db)
+    sandbox = await repo.get_by_id(s_id)
 
     if not sandbox:
         logger.error(f"Sandbox {s_id} not found")
@@ -336,7 +337,7 @@ async def report_idle_shutdown(
 
         # Update sandbox status to STOPPED
         sandbox.status = SandboxStatus.STOPPED
-        db.commit()
+        await db.commit()
 
         logger.info(
             f"Successfully stopped idle sandbox {sandbox.id} (container: {sandbox.container_id})"

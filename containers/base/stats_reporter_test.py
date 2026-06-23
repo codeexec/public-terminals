@@ -103,7 +103,7 @@ class TestStatsReporter:
         assert send_stats("test-term", stats, "http://test-api", "test-token") is True
 
         args, kwargs = mock_client.post.call_args
-        assert kwargs["json"]["terminal_id"] == "test-term"
+        assert kwargs["json"]["sandbox_id"] == "test-term"
         assert kwargs["json"]["cpu_percent"] == 10.0
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 

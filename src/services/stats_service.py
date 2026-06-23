@@ -18,6 +18,8 @@ class StatsService:
         """Initialize stats service with in-memory cache"""
         # In-memory cache for container stats: {container_id: {stats, timestamp}}
         self._stats_cache: Dict[str, Dict] = {}
+        self._cache_ttl_seconds = 300
+        self._max_cache_size = 1000
 
     @staticmethod
     def get_system_stats() -> Dict:
@@ -68,6 +70,28 @@ class StatsService:
                 "disk": {"total_gb": 0, "used_gb": 0, "percent": 0},
             }
 
+    def _evict_cache(self):
+        """Evict expired and oldest entries from stats cache"""
+        now = datetime.now(timezone.utc)
+        # 1. Evict expired entries
+        expired = [
+            cid for cid, val in self._stats_cache.items()
+            if (now - val["timestamp"]).total_seconds() > self._cache_ttl_seconds
+        ]
+        for cid in expired:
+            self._stats_cache.pop(cid, None)
+
+        # 2. Evict oldest if still exceeding max_size
+        if len(self._stats_cache) > self._max_cache_size:
+            # Sort by timestamp ascending to get oldest first
+            sorted_items = sorted(
+                self._stats_cache.items(),
+                key=lambda item: item[1]["timestamp"]
+            )
+            to_remove = sorted_items[:(len(self._stats_cache) - self._max_cache_size)]
+            for cid, _ in to_remove:
+                self._stats_cache.pop(cid, None)
+
     def update_container_stats(
         self,
         container_id: str,
@@ -86,6 +110,8 @@ class StatsService:
         """
         if not container_id:
             return
+
+        self._evict_cache()
 
         self._stats_cache[container_id] = {
             "cpu_percent": round(cpu_percent, 1),
@@ -109,10 +135,18 @@ class StatsService:
         if not container_id:
             return None
 
+        self._evict_cache()
+
         # Get stats from cache
         cached_stats = self._stats_cache.get(container_id)
 
         if cached_stats:
+            # Check TTL
+            now = datetime.now(timezone.utc)
+            if (now - cached_stats["timestamp"]).total_seconds() > self._cache_ttl_seconds:
+                self._stats_cache.pop(container_id, None)
+                return None
+
             # Return cached stats (excluding timestamp for backward compatibility)
             return {
                 "cpu_percent": cached_stats["cpu_percent"],

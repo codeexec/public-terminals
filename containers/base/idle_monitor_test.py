@@ -13,7 +13,7 @@ class TestIdleMonitor:
     @pytest.fixture
     def monitor(self):
         return IdleMonitor(
-            terminal_id="test-term",
+            sandbox_id="test-term",
             api_callback_url="http://test-api",
             callback_token="test-token",
             idle_timeout_seconds=3600,
@@ -107,7 +107,7 @@ class TestIdleMonitor:
 
         # Verify payload
         args, kwargs = mock_client.post.call_args
-        assert kwargs["json"]["terminal_id"] == "test-term"
+        assert kwargs["json"]["sandbox_id"] == "test-term"
         assert kwargs["json"]["idle_seconds"] == 3600
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 

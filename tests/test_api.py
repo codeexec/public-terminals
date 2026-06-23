@@ -24,13 +24,22 @@ def test_health():
 @pytest.mark.integration
 def test_list_sandboxes():
     """Test listing sandboxes"""
-    response = requests.get(f"{API_BASE}/api/v1/sandboxes")
+    headers = {"X-Guest-ID": "test-guest"}
+    response = requests.get(f"{API_BASE}/api/v1/sandboxes", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert "sandboxes" in data
     assert "total" in data
     assert isinstance(data["sandboxes"], list)
     assert isinstance(data["total"], int)
+
+
+@pytest.mark.integration
+def test_list_sandboxes_missing_guest_id():
+    """Test that listing sandboxes without X-Guest-ID fails with 400"""
+    response = requests.get(f"{API_BASE}/api/v1/sandboxes")
+    assert response.status_code == 400
+    assert "Missing X-Guest-ID" in response.json()["detail"]
 
 
 @pytest.mark.integration
@@ -46,7 +55,7 @@ def test_create_sandbox():
         assert "id" in data
         assert "status" in data
         assert "expires_at" in data
-        assert data["status"] in ["pending", "starting", "started"]
+        assert data["status"].upper() in ["PENDING", "STARTING", "STARTED"]
     finally:
         if sandbox_id:
             try:
@@ -103,7 +112,7 @@ def test_wait_for_sandbox_startup(sandbox_id: str):
         response = requests.get(f"{API_BASE}/api/v1/sandboxes/{sandbox_id}")
         data = response.json()
 
-        if data["status"] == "started":
+        if data["status"] == "STARTED":
             assert data["tunnel_url"] is not None
             assert data["container_id"] is not None
             return

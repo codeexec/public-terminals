@@ -126,7 +126,7 @@ def main():
     if not sandbox_id or not api_callback_url or not callback_token:
         logger.error(
             "Missing required environment variables: "
-            "TERMINAL_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
+            "SANDBOX_ID, API_CALLBACK_URL, or CALLBACK_TOKEN"
         )
         sys.exit(1)
 
@@ -146,7 +146,7 @@ def main():
             # Wait 30 seconds before next report
             time.sleep(30)
 
-        except KeyboardInterrupt:
+        except KeyboardInterrupt:  # noqa: PERF203
             logger.info("Stats reporter stopped")
             break
         except Exception as e:
@@ -155,4 +155,6 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
+n__":
     main()
